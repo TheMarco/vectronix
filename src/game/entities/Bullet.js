@@ -54,8 +54,8 @@ export class BulletManager {
   fireEnemyAimed(x, y, z, targetX, targetY) {
     const dx = targetX - x;
     const dy = targetY - y;
-    // Clamp angle to ±55° from straight down so bullets can't go near-horizontal
-    const maxDeflection = 55 * Math.PI / 180;
+    // Clamp angle to ±30° from straight down (never shallower than 60° from horizontal)
+    const maxDeflection = 30 * Math.PI / 180;
     let angle = Math.atan2(dy, dx);
     const straight = Math.PI / 2; // straight down
     const diff = angle - straight;
