@@ -1,0 +1,337 @@
+import { CONFIG } from '../config.js';
+
+/**
+ * Enemy states:
+ *   'entering'          — flying along entrance path toward formation slot
+ *   'holding'           — in formation, following formation sway
+ *   'diving'            — broke from formation, following dive path
+ *   'returning'         — dive finished, flying back to formation slot
+ *   'tractor_diving'    — boss diving down to deploy beam
+ *   'tractor_beaming'   — boss hovering, beam active
+ *   'tractor_capturing' — beam got player, pulling ship up
+ *   'tractor_returning' — beam done, boss returning to formation
+ *   'dead'              — destroyed
+ */
+export class Enemy {
+  // HP by enemy type
+  static HP_TABLE = {
+    grunt: 1, swarm: 1, attacker: 1, spinner: 1, phantom: 1,
+    bomber: 2, commander: 2, boss: 2,
+    guardian: 3,
+  };
+
+  constructor(type, row, col) {
+    this.type = type;       // 'grunt' | 'attacker' | 'commander'
+    this.row = row;
+    this.col = col;
+    this.state = 'queued';
+    this.alive = true;
+
+    // HP system
+    this.maxHp = Enemy.HP_TABLE[type] || 1;
+    this.hp = this.maxHp;
+    this.hitFlashTimer = 0;
+
+    // Current world position
+    this.x = 0;
+    this.y = 0;
+    this.z = 0;
+
+    // Entrance path
+    this.entrancePath = null;
+    this.entranceT = 0;
+    this.entranceSpeed = 1.0;
+
+    // Dive state
+    this.divePath = null;
+    this.diveT = 0;
+    this.diveSpeed = 1.0;
+    this.diveShots = 0;
+
+    // Spinner rotation (per-enemy, used for deflection check)
+    this.spinAngle = 0;
+
+    // Phantom flicker
+    this.phantomTimer = Math.random() * Math.PI * 2; // randomize phase
+
+    // Boss-specific
+    this.isBoss = type === 'boss';
+    this.capturedShip = null;     // reference to CapturedShip if holding one
+    this.beamTimer = 0;           // ms remaining for beam
+    this.beamActive = false;
+    this.tractorPath = null;
+    this.tractorT = 0;
+
+    // Return to formation
+    this.returnStartX = 0;
+    this.returnStartY = 0;
+    this.returnStartZ = 0;
+    this.returnT = 0;
+
+    // Score
+    this.scoreValue = this._getScore(false);
+    this.scoreDiving = this._getScore(true);
+  }
+
+  _getScore(diving) {
+    const key = this.type.toUpperCase();
+    const base = CONFIG[`SCORE_${key}`] || 50;
+    const divingScore = CONFIG[`SCORE_${key}_DIVING`] || base * 2;
+    return diving ? divingScore : base;
+  }
+
+  get damageLevel() {
+    return this.maxHp - this.hp;
+  }
+
+  get color() {
+    if (this.hitFlashTimer > 0) return 0xffffff;
+    const key = this.type.toUpperCase();
+    const base = CONFIG.COLORS[key] || 0xffffff;
+    if (this.damageLevel === 0) return base;
+    // Shift toward red/white when damaged
+    const r = (base >> 16) & 0xff;
+    const g = (base >> 8) & 0xff;
+    const b = base & 0xff;
+    if (this.damageLevel >= 2) {
+      // Critical: shift heavily toward white-red
+      return ((Math.min(255, r + 140) << 16) | (Math.max(0, g - 80) << 8) | Math.max(0, b - 80)) >>> 0;
+    }
+    // Damaged: shift toward red
+    return ((Math.min(255, r + 80) << 16) | (Math.max(0, g - 40) << 8) | Math.max(0, b - 40)) >>> 0;
+  }
+
+  get isDiving() {
+    return this.state === 'diving' || this.state === 'tractor_diving' ||
+           this.state === 'tractor_beaming' || this.state === 'tractor_capturing';
+  }
+
+  get isBeaming() {
+    return this.state === 'tractor_beaming';
+  }
+
+  get isTargetable() {
+    if (this.type === 'phantom') {
+      return Math.sin(this.phantomTimer * 2.5) >= -0.3;
+    }
+    return true;
+  }
+
+  get phantomAlpha() {
+    if (this.type !== 'phantom') return 1;
+    const s = Math.sin(this.phantomTimer * 2.5);
+    // Smooth transition: fully visible when s >= 0.3, ghostly when s < -0.3
+    if (s >= 0.3) return 1;
+    if (s <= -0.3) return 0.15;
+    // Transition zone: map [-0.3, 0.3] → [0.15, 1]
+    return 0.15 + (s + 0.3) / 0.6 * 0.85;
+  }
+
+  /** Returns true if enemy survived the hit */
+  hit() {
+    this.hp--;
+    if (this.hp <= 0) {
+      this.kill();
+      return false; // dead
+    }
+    this.hitFlashTimer = 0.15;
+    return true; // survived
+  }
+
+  kill() {
+    this.alive = false;
+    this.state = 'dead';
+  }
+
+  /** Called each frame from formation system */
+  setFormationPos(fx, fy, fz) {
+    if (this.state === 'holding') {
+      this.x = fx;
+      this.y = fy;
+      this.z = fz;
+    }
+  }
+
+  startEntrance(path, speed) {
+    this.entrancePath = path;
+    this.entranceT = 0;
+    this.entranceSpeed = speed;
+    this.state = 'entering';
+    const p = path(0);
+    this.x = p.x;
+    this.y = p.y;
+    this.z = p.z || 0;
+  }
+
+  startDive(path, speed) {
+    this.divePath = path;
+    this.diveT = 0;
+    this.diveSpeed = speed;
+    this.state = 'diving';
+    this.diveShots = 0;
+  }
+
+  startTractorDive(path) {
+    this.tractorPath = path;
+    this.tractorT = 0;
+    this.state = 'tractor_diving';
+    this.beamActive = false;
+    this.beamTimer = CONFIG.BEAM_DURATION;
+  }
+
+  update(dt, formationX, formationY, formationZ) {
+    if (!this.alive) return;
+
+    // Hit flash decay
+    if (this.hitFlashTimer > 0) {
+      this.hitFlashTimer -= dt;
+      if (this.hitFlashTimer < 0) this.hitFlashTimer = 0;
+    }
+
+    // Spinner rotation
+    if (this.type === 'spinner') {
+      this.spinAngle += dt * 3.0;
+    }
+
+    // Phantom flicker timer
+    if (this.type === 'phantom') {
+      this.phantomTimer += dt;
+    }
+
+    switch (this.state) {
+      case 'queued':
+        // Waiting in entrance queue — do nothing
+        return;
+
+      case 'entering': {
+        this.entranceT += dt * this.entranceSpeed;
+        if (this.entranceT >= 1) {
+          // Keep last path position (for challenge enemies that don't have formation slots)
+          const endP = this.entrancePath(1);
+          this.state = 'holding';
+          this.x = formationX || endP.x;
+          this.y = formationY || endP.y;
+          this.z = formationZ || endP.z || 0;
+        } else {
+          const p = this.entrancePath(this.entranceT);
+          this.x = p.x;
+          this.y = p.y;
+          this.z = p.z || 0;
+        }
+        break;
+      }
+
+      case 'holding': {
+        this.x = formationX;
+        this.y = formationY;
+        this.z = formationZ;
+        break;
+      }
+
+      case 'diving': {
+        this.diveT += dt * this.diveSpeed;
+        if (this.diveT >= 1) {
+          // Start return to formation
+          this.state = 'returning';
+          this.returnStartX = this.x;
+          this.returnStartY = this.y;
+          this.returnStartZ = this.z;
+          this.returnT = 0;
+        } else {
+          const p = this.divePath(this.diveT);
+          this.x = p.x;
+          this.y = p.y;
+          this.z = p.z || 0;
+        }
+        break;
+      }
+
+      case 'returning': {
+        this.returnT += dt * 1.2;
+        if (this.returnT >= 1) {
+          this.state = 'holding';
+          this.x = formationX;
+          this.y = formationY;
+          this.z = formationZ;
+        } else {
+          const t = this.returnT;
+          const ease = t * t * (3 - 2 * t); // smoothstep
+          this.x = this.returnStartX + (formationX - this.returnStartX) * ease;
+          this.y = this.returnStartY + (formationY - this.returnStartY) * ease;
+          this.z = this.returnStartZ + (formationZ - this.returnStartZ) * ease;
+        }
+        break;
+      }
+
+      case 'tractor_diving': {
+        // Follow dive path down to hover position (t 0→0.3 of tractor path)
+        this.tractorT += dt * 0.18;
+        if (this.tractorT >= 0.3) {
+          this.tractorT = 0.3;
+          this.state = 'tractor_beaming';
+          this.beamActive = true;
+        }
+        const p = this.tractorPath(this.tractorT);
+        this.x = p.x;
+        this.y = p.y;
+        this.z = p.z || 0;
+        break;
+      }
+
+      case 'tractor_beaming': {
+        // Hover in place, beam active
+        this.beamTimer -= dt * 1000;
+        // Slight sway while beaming
+        const swayT = (CONFIG.BEAM_DURATION - this.beamTimer) / CONFIG.BEAM_DURATION;
+        const p2 = this.tractorPath(0.3 + swayT * 0.5);
+        this.x = p2.x;
+        this.y = p2.y;
+        this.z = p2.z || 0;
+
+        if (this.beamTimer <= 0) {
+          // Beam expired without capture
+          this.beamActive = false;
+          this.state = 'tractor_returning';
+          this.returnStartX = this.x;
+          this.returnStartY = this.y;
+          this.returnStartZ = this.z;
+          this.returnT = 0;
+        }
+        break;
+      }
+
+      case 'tractor_capturing': {
+        // Wait for captured ship animation, then return
+        // The capture animation is handled by CapturedShip entity
+        // Boss stays in place briefly, then returns
+        this.beamTimer -= dt * 1000;
+        if (this.beamTimer <= 0) {
+          this.beamActive = false;
+          this.state = 'tractor_returning';
+          this.returnStartX = this.x;
+          this.returnStartY = this.y;
+          this.returnStartZ = this.z;
+          this.returnT = 0;
+        }
+        break;
+      }
+
+      case 'tractor_returning': {
+        this.returnT += dt * 0.5;
+        if (this.returnT >= 1) {
+          this.state = 'holding';
+          this.x = formationX;
+          this.y = formationY;
+          this.z = formationZ;
+        } else {
+          const t = this.returnT;
+          const ease = t * t * (3 - 2 * t);
+          this.x = this.returnStartX + (formationX - this.returnStartX) * ease;
+          this.y = this.returnStartY + (formationY - this.returnStartY) * ease;
+          this.z = this.returnStartZ + (formationZ - this.returnStartZ) * ease;
+        }
+        break;
+      }
+    }
+  }
+}
