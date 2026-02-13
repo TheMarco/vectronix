@@ -23,34 +23,34 @@ function bezier2(p0, p1, p2, t) {
 
 /**
  * DIVE TYPE 1: Swoop
- * Curves down toward player, sweeps across, arcs back up.
- * Classic Galaga dive-bomb pattern. Never goes below player Y.
+ * Curves toward player, sweeps across at attack altitude, exits off the side.
  */
 export function createSwoopDive(startX, startY, playerX) {
-  const endX = startX;
-  const endY = CONFIG.FIELD_TOP - 40;
   const attackY = CONFIG.PLAYER_Y - 60;
   const side = startX > CONFIG.CENTER_X ? 1 : -1;
-  const midX = playerX + side * 120;
-  const sweepEndX = endX - side * 100;
+  const midX = playerX + side * 100;
+  const sweepX = midX - side * 220;
+  // Exit off opposite side
+  const exitX = side > 0 ? -60 : CONFIG.WIDTH + 60;
 
   return function(t) {
     let x, y, z;
-    if (t < 0.4) {
-      const lt = smoothstep(t / 0.4);
+    if (t < 0.35) {
+      const lt = smoothstep(t / 0.35);
       x = lerp(startX, midX, lt);
       y = lerp(startY, attackY, lt);
       z = lerp(CONFIG.FORMATION_Z, -6, lt);
     } else if (t < 0.65) {
-      const lt = smoothstep((t - 0.4) / 0.25);
-      x = lerp(midX, sweepEndX, lt);
-      y = attackY - Math.sin(lt * Math.PI) * 80;
-      z = lerp(-6, -2, lt);
+      const lt = smoothstep((t - 0.35) / 0.3);
+      x = lerp(midX, sweepX, lt);
+      y = attackY - Math.sin(lt * Math.PI) * 50;
+      z = lerp(-6, -3, lt);
     } else {
+      // Sweep off the side while climbing slightly
       const lt = smoothstep((t - 0.65) / 0.35);
-      x = lerp(sweepEndX, endX, lt);
-      y = lerp(attackY - 80, endY, lt);
-      z = lerp(-2, CONFIG.FORMATION_Z, lt);
+      x = lerp(sweepX, exitX, lt);
+      y = lerp(attackY, CONFIG.CENTER_Y - 40, lt);
+      z = lerp(-3, CONFIG.FORMATION_Z, lt);
     }
     return { x, y, z };
   };
@@ -58,12 +58,13 @@ export function createSwoopDive(startX, startY, playerX) {
 
 /**
  * DIVE TYPE 2: Direct dive
- * Straight dive toward player position, pull up before reaching player, arc back.
+ * Aggressive dive at player, pulls through and exits off the side.
  */
 export function createDirectDive(startX, startY, playerX) {
-  const attackY = CONFIG.PLAYER_Y - 50;
-  const exitX = startX + (startX - playerX) * 0.5;
-  const passX = playerX + (exitX - playerX) * 0.4;
+  const attackY = CONFIG.PLAYER_Y - 40;
+  const side = startX > CONFIG.CENTER_X ? 1 : -1;
+  // After diving at player, arc off to the side
+  const exitX = side > 0 ? -60 : CONFIG.WIDTH + 60;
 
   return function(t) {
     let x, y, z;
@@ -72,16 +73,18 @@ export function createDirectDive(startX, startY, playerX) {
       x = lerp(startX, playerX, lt);
       y = lerp(startY, attackY, lt);
       z = lerp(CONFIG.FORMATION_Z, -10, lt);
-    } else if (t < 0.6) {
-      const lt = smoothstep((t - 0.45) / 0.15);
-      x = lerp(playerX, passX, lt);
+    } else if (t < 0.65) {
+      // Pull through — cross player zone
+      const lt = smoothstep((t - 0.45) / 0.2);
+      x = lerp(playerX, playerX - side * 120, lt);
       y = attackY - Math.sin(lt * Math.PI) * 30;
-      z = lerp(-10, -4, lt);
+      z = lerp(-10, -5, lt);
     } else {
-      const lt = smoothstep((t - 0.6) / 0.4);
-      x = lerp(passX, exitX, lt);
-      y = lerp(attackY - 30, CONFIG.FIELD_TOP - 40, lt);
-      z = lerp(-4, CONFIG.FORMATION_Z, lt);
+      // Exit off the side while climbing
+      const lt = smoothstep((t - 0.65) / 0.35);
+      x = lerp(playerX - side * 120, exitX, lt);
+      y = lerp(attackY, CONFIG.CENTER_Y, lt);
+      z = lerp(-5, CONFIG.FORMATION_Z, lt);
     }
     return { x, y, z };
   };
@@ -89,54 +92,201 @@ export function createDirectDive(startX, startY, playerX) {
 
 /**
  * DIVE TYPE 3: Zigzag
- * Descend in a zigzag pattern, then arc back up. Stays above player.
+ * Zigzag descent to player zone, then exits off the side.
  */
 export function createZigzagDive(startX, startY, playerX) {
-  const amplitude = 100;
-  const attackY = CONFIG.PLAYER_Y - 60;
-  // x position at end of zigzag phase (sin(3π) ≈ 0)
-  const zigEndX = startX;
+  const amplitude = 110;
+  const attackY = CONFIG.PLAYER_Y - 50;
+  const side = startX > CONFIG.CENTER_X ? 1 : -1;
+  const exitX = side > 0 ? -60 : CONFIG.WIDTH + 60;
 
   return function(t) {
     let x, y, z;
     if (t < 0.6) {
       const lt = t / 0.6;
-      // Smoothstep the overall progress for gentle start/end
       const st = smoothstep(lt);
       x = startX + Math.sin(lt * Math.PI * 3) * amplitude * Math.sin(lt * Math.PI);
       y = lerp(startY, attackY, st);
       z = lerp(CONFIG.FORMATION_Z, -6, Math.sin(lt * Math.PI));
     } else {
+      // Exit off the side
       const lt = smoothstep((t - 0.6) / 0.4);
-      x = lerp(zigEndX, startX, lt);
-      y = lerp(attackY, CONFIG.FIELD_TOP - 40, lt);
-      z = lerp(-6, CONFIG.FORMATION_Z, lt);
+      x = lerp(startX, exitX, lt);
+      y = lerp(attackY, CONFIG.CENTER_Y - 20, lt);
+      z = CONFIG.FORMATION_Z;
     }
     return { x, y, z };
   };
 }
 
 /**
- * DIVE TYPE 4: Wide loop
- * Circular arc through the playfield. Stays within screen bounds.
+ * DIVE TYPE 4: Deep loop
+ * Circular arc through player zone. Full loop, exits off the side.
  */
 export function createLoopDive(startX, startY, playerX) {
   const side = startX > CONFIG.CENTER_X ? 1 : -1;
-  const loopCenterX = CONFIG.CENTER_X + side * 150;
-  const loopCenterY = CONFIG.CENTER_Y;
+  const loopCenterX = CONFIG.CENTER_X + side * 80;
+  const loopCenterY = CONFIG.CENTER_Y + 40;
   const loopRadiusX = 180;
   const loopRadiusY = 180;
   const startAngle = Math.atan2(startY - loopCenterY, startX - loopCenterX);
+  const exitX = side > 0 ? -60 : CONFIG.WIDTH + 60;
+
+  // Precompute loop-end values for seamless transition
+  const loopEndSt = 0.75; // st at the transition (the easing collapses to t at this point)
+  const loopEndAngle = startAngle + loopEndSt * Math.PI * 2 * side;
+  const loopEndX = loopCenterX + Math.cos(loopEndAngle) * loopRadiusX;
+  const loopEndY = loopCenterY + Math.sin(loopEndAngle) * loopRadiusY;
+  const loopEndZ = CONFIG.FORMATION_Z * (1 - Math.sin(loopEndSt * Math.PI) * 1.2);
 
   return function(t) {
-    // Ease t at start and end for smooth entry/exit
-    const st = t < 0.1 ? smoothstep(t / 0.1) * 0.1
-             : t > 0.9 ? 0.9 + smoothstep((t - 0.9) / 0.1) * 0.1
-             : t;
-    const angle = startAngle + st * Math.PI * 2 * side;
-    const x = loopCenterX + Math.cos(angle) * loopRadiusX;
-    const y = loopCenterY + Math.sin(angle) * loopRadiusY;
-    const z = CONFIG.FORMATION_Z * (1 - Math.sin(st * Math.PI) * 1.2);
+    if (t < 0.75) {
+      const st = t < 0.08 ? smoothstep(t / 0.08) * 0.08
+               : t > 0.67 ? 0.67 + smoothstep((t - 0.67) / 0.08) * 0.08
+               : t;
+      const angle = startAngle + st * Math.PI * 2 * side;
+      const x = loopCenterX + Math.cos(angle) * loopRadiusX;
+      const y = loopCenterY + Math.sin(angle) * loopRadiusY;
+      const z = CONFIG.FORMATION_Z * (1 - Math.sin(st * Math.PI) * 1.2);
+      return { x, y, z };
+    }
+    // Exit off side after loop — starts exactly where loop phase ended
+    const lt = smoothstep((t - 0.75) / 0.25);
+    return {
+      x: lerp(loopEndX, exitX, lt),
+      y: lerp(loopEndY, CONFIG.CENTER_Y - 40, lt),
+      z: lerp(loopEndZ, CONFIG.FORMATION_Z, lt),
+    };
+  };
+}
+
+/**
+ * DIVE TYPE 5: Spiral Descent
+ * Tightening spiral toward player zone, then exits off the side.
+ */
+export function createSpiralDive(startX, startY, playerX) {
+  const side = startX > CONFIG.CENTER_X ? 1 : -1;
+  const attackY = CONFIG.PLAYER_Y - 70;
+  const exitX = side > 0 ? -60 : CONFIG.WIDTH + 60;
+
+  // Precompute spiral endpoint for seamless exit transition
+  // At lt=1: sin(1*PI)=0, so z ends at FORMATION_Z
+  // radius=0 so x = baseX = lerp(startX, playerX, 0.6)
+  const spiralEndX = lerp(startX, playerX, 0.6);
+
+  return function(t) {
+    let x, y, z;
+    if (t < 0.7) {
+      const lt = t / 0.7;
+      const st = smoothstep(lt);
+      const radius = (1 - st) * 140;
+      const angle = lt * Math.PI * 4;
+      const baseX = lerp(startX, playerX, st * 0.6);
+      x = baseX + Math.cos(angle) * radius;
+      y = lerp(startY, attackY, st);
+      z = lerp(CONFIG.FORMATION_Z, -8, Math.sin(lt * Math.PI));
+    } else {
+      // Exit off side — starts at spiral endpoint (z=FORMATION_Z, x=spiralEndX, y=attackY)
+      const lt = smoothstep((t - 0.7) / 0.3);
+      x = lerp(spiralEndX, exitX, lt);
+      y = lerp(attackY, CONFIG.CENTER_Y - 20, lt);
+      z = CONFIG.FORMATION_Z;
+    }
+    return { x, y, z };
+  };
+}
+
+/**
+ * DIVE TYPE 6: Banking S-Curve
+ * Wide S-turn sweeping across full screen width, exits off the opposite side.
+ */
+export function createBankingSCurve(startX, startY, playerX) {
+  const side = startX > CONFIG.CENTER_X ? 1 : -1;
+  const exitX = side > 0 ? -60 : CONFIG.WIDTH + 60;
+  const attackY = CONFIG.PLAYER_Y - 50;
+
+  return function(t) {
+    const st = smoothstep(t);
+    const sAmplitude = 250;
+    const x = lerp(startX, exitX, st) + Math.sin(t * Math.PI * 2) * sAmplitude * (1 - t * 0.6) * -side;
+    const y = lerp(startY, attackY, Math.sin(t * Math.PI));
+    const z = lerp(CONFIG.FORMATION_Z, -6, Math.sin(t * Math.PI));
+    return { x, y, z };
+  };
+}
+
+/**
+ * DIVE TYPE 7: Feint & Strike
+ * Dips toward player, pulls up briefly (feint), then commits to a side exit.
+ */
+export function createFeintStrike(startX, startY, playerX) {
+  const feintY = CONFIG.CENTER_Y + 40;
+  const attackY = CONFIG.PLAYER_Y - 40;
+  const side = startX > CONFIG.CENTER_X ? 1 : -1;
+  const exitX = side > 0 ? -60 : CONFIG.WIDTH + 60;
+
+  return function(t) {
+    let x, y, z;
+    if (t < 0.3) {
+      // Initial dip toward player
+      const lt = smoothstep(t / 0.3);
+      x = lerp(startX, playerX, lt * 0.7);
+      y = lerp(startY, feintY, lt);
+      z = lerp(CONFIG.FORMATION_Z, -4, lt);
+    } else if (t < 0.45) {
+      // Pull up feint
+      const lt = smoothstep((t - 0.3) / 0.15);
+      x = lerp(playerX * 0.7 + startX * 0.3, startX * 0.4 + playerX * 0.6, lt);
+      y = lerp(feintY, feintY - 70, lt);
+      z = lerp(-4, -2, lt);
+    } else if (t < 0.7) {
+      // Committed dive toward player
+      const lt = smoothstep((t - 0.45) / 0.25);
+      const commitX = startX * 0.4 + playerX * 0.6;
+      x = lerp(commitX, playerX - side * 60, lt);
+      y = lerp(feintY - 70, attackY, lt);
+      z = lerp(-2, -8, lt);
+    } else {
+      // Exit off side
+      const lt = smoothstep((t - 0.7) / 0.3);
+      x = lerp(playerX - side * 60, exitX, lt);
+      y = lerp(attackY, CONFIG.CENTER_Y - 30, lt);
+      z = lerp(-8, CONFIG.FORMATION_Z, lt);
+    }
+    return { x, y, z };
+  };
+}
+
+/**
+ * DIVE TYPE 8: Peel-Off
+ * Dives to one side, crosses through player zone, peels off to opposite side exit.
+ */
+export function createPeelOff(startX, startY, playerX) {
+  const side = startX > CONFIG.CENTER_X ? 1 : -1;
+  const exitX = side > 0 ? -60 : CONFIG.WIDTH + 60;
+  const attackY = CONFIG.PLAYER_Y - 50;
+
+  return function(t) {
+    let x, y, z;
+    if (t < 0.35) {
+      // Dive to one side toward player zone
+      const lt = smoothstep(t / 0.35);
+      x = lerp(startX, startX + side * 140, lt);
+      y = lerp(startY, attackY, lt);
+      z = lerp(CONFIG.FORMATION_Z, -8, lt);
+    } else if (t < 0.65) {
+      // Cross through player zone to other side
+      const lt = smoothstep((t - 0.35) / 0.3);
+      x = lerp(startX + side * 140, playerX - side * 100, lt);
+      y = attackY - Math.sin(lt * Math.PI) * 40;
+      z = lerp(-8, -4, lt);
+    } else {
+      // Peel off to opposite side exit
+      const lt = smoothstep((t - 0.65) / 0.35);
+      x = lerp(playerX - side * 100, exitX, lt);
+      y = lerp(attackY, CONFIG.CENTER_Y - 20, lt);
+      z = lerp(-4, CONFIG.FORMATION_Z, lt);
+    }
     return { x, y, z };
   };
 }
@@ -184,6 +334,10 @@ export const DIVE_PATHS = [
   createDirectDive,
   createZigzagDive,
   createLoopDive,
+  createSpiralDive,
+  createBankingSCurve,
+  createFeintStrike,
+  createPeelOff,
 ];
 
 /**

@@ -468,6 +468,60 @@ export class SoundEngine {
     osc2.stop(t + 0.12);
   }
 
+  // ─── EXTRA LIFE ───
+  // Bright ascending arpeggio — 1UP!
+  playExtraLife() {
+    if (!this._ensureCtx()) return;
+    const t = this.ctx.currentTime;
+    const notes = [523, 659, 784, 1047, 1319, 1568];
+
+    notes.forEach((freq, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = i < 3 ? 'square' : 'sawtooth';
+      const noteT = t + i * 0.06;
+      osc.frequency.setValueAtTime(freq, noteT);
+      gain.gain.setValueAtTime(0, noteT);
+      gain.gain.linearRampToValueAtTime(0.14, noteT + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, noteT + 0.2);
+      osc.connect(gain).connect(this.masterGain);
+      osc.start(noteT);
+      osc.stop(noteT + 0.2);
+    });
+
+    // Shimmer chord at peak
+    const chord = [1047, 1319];
+    chord.forEach((freq) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, t + 0.3);
+      gain.gain.setValueAtTime(0.08, t + 0.3);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+      osc.connect(gain).connect(this.masterGain);
+      osc.start(t + 0.3);
+      osc.stop(t + 0.7);
+    });
+  }
+
+  // ─── STAT TALLY BLIP ───
+  // Short click for stat reveal
+  playTallyBlip() {
+    if (!this._ensureCtx()) return;
+    const t = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(880, t);
+    osc.frequency.setValueAtTime(1100, t + 0.02);
+    gain.gain.setValueAtTime(0.10, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    osc.connect(gain).connect(this.masterGain);
+    osc.start(t);
+    osc.stop(t + 0.06);
+  }
+
   // ─── TITLE MUSIC ───
   // Simple looping bass pulse
   playTitlePulse() {

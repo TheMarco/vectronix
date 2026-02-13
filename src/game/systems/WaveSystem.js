@@ -280,6 +280,27 @@ export class WaveSystem {
       }
     }
 
+    // Update formation compression (reuse array to avoid per-frame allocation)
+    if (!this.isChallenge) {
+      if (!this._aliveSlots) this._aliveSlots = [];
+      const slots = this._aliveSlots;
+      let count = 0;
+      for (let i = 0; i < this.enemies.length; i++) {
+        const e = this.enemies[i];
+        if (e.alive && (e.state === 'holding' || e.state === 'returning' || e.state === 're-entering')) {
+          if (count < slots.length) {
+            slots[count].row = e.row;
+            slots[count].col = e.col;
+          } else {
+            slots.push({ row: e.row, col: e.col });
+          }
+          count++;
+        }
+      }
+      slots.length = count;
+      formation.setAliveSlots(slots, this.enemies.length);
+    }
+
     // Update all enemies
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
@@ -452,7 +473,7 @@ export class WaveSystem {
         if (this.onDive) this.onDive();
       }
 
-      // Type-specific dive speed and path preference
+      // Type-specific dive speed and path preference (8 paths: 0-7)
       let diveSpeed;
       let pathIdx;
       switch (enemy.type) {
@@ -462,27 +483,27 @@ export class WaveSystem {
           break;
         case 'swarm':
           diveSpeed = 0.26 + this.speedMultiplier * 0.06; // fast
-          pathIdx = 1; // always direct dive
+          pathIdx = (this.waveNumber + enemy.col) % 2 === 0 ? 1 : 7; // direct or peel-off
           break;
         case 'attacker':
           diveSpeed = 0.22 + this.speedMultiplier * 0.06; // aggressive, fast
-          pathIdx = (enemy.col + this.waveNumber) % 2 === 0 ? 0 : 1; // swoop or direct
+          pathIdx = [0, 1, 6, 7][(enemy.col + this.waveNumber) % 4]; // swoop, direct, feint, peel-off
           break;
         case 'bomber':
           diveSpeed = 0.13 + this.speedMultiplier * 0.04; // slow, heavy
-          pathIdx = 0; // always swoop — gives time to fire many shots
+          pathIdx = (this.waveNumber + enemy.col) % 2 === 0 ? 0 : 5; // swoop or banking s-curve
           break;
         case 'spinner':
           diveSpeed = 0.24 + this.speedMultiplier * 0.06; // fast
-          pathIdx = 3; // always loop — fits spinning theme
+          pathIdx = (this.waveNumber + enemy.col) % 2 === 0 ? 3 : 4; // loop or spiral
           break;
         case 'phantom':
           diveSpeed = 0.20 + this.speedMultiplier * 0.05;
-          pathIdx = 2; // always zigzag — erratic, hard to hit
+          pathIdx = (this.waveNumber + enemy.col) % 2 === 0 ? 2 : 6; // zigzag or feint
           break;
         case 'guardian':
           diveSpeed = 0.14 + this.speedMultiplier * 0.04; // slow, deliberate
-          pathIdx = 3; // wide loop
+          pathIdx = (this.waveNumber + enemy.col) % 2 === 0 ? 3 : 5; // loop or s-curve
           break;
         case 'commander':
           diveSpeed = 0.20 + this.speedMultiplier * 0.05;
@@ -490,7 +511,7 @@ export class WaveSystem {
           break;
         case 'boss':
           diveSpeed = 0.16 + this.speedMultiplier * 0.04; // menacing, slow
-          pathIdx = 0; // swoop
+          pathIdx = (this.waveNumber + enemy.col) % 2 === 0 ? 0 : 7; // swoop or peel-off
           break;
         default:
           diveSpeed = 0.18 + this.speedMultiplier * 0.05;

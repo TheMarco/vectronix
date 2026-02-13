@@ -634,7 +634,7 @@ export function createShaderOverlay(gameCanvas) {
   gl.clearColor(0, 0, 0, 0);
 
   let savedShader = 'vector';
-  try { savedShader = localStorage.getItem('hexax-display-mode') || 'vector'; } catch (e) {}
+  try { savedShader = localStorage.getItem('vectronix-display-mode') || 'vector'; } catch (e) {}
   // Map legacy 'vector' to the new composite pipeline
   let activeShaderName = (savedShader === 'crt') ? 'crt' : 'vector';
 
@@ -775,7 +775,7 @@ export function createShaderOverlay(gameCanvas) {
       if (name === 'crt' || name === 'vector') {
         activeShaderName = name;
         applyTextureFilter(name);
-        try { localStorage.setItem('hexax-display-mode', name); } catch (e) {}
+        try { localStorage.setItem('vectronix-display-mode', name); } catch (e) {}
       }
     },
     setPhosphorDecay(value) {

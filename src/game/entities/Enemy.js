@@ -6,6 +6,7 @@ import { CONFIG } from '../config.js';
  *   'holding'           — in formation, following formation sway
  *   'diving'            — broke from formation, following dive path
  *   'returning'         — dive finished, flying back to formation slot
+ *   're-entering'       — warped above screen, flying back to formation from top
  *   'tractor_diving'    — boss diving down to deploy beam
  *   'tractor_beaming'   — boss hovering, beam active
  *   'tractor_capturing' — beam got player, pulling ship up
@@ -89,6 +90,18 @@ export class Enemy {
     const key = this.type.toUpperCase();
     const base = CONFIG.COLORS[key] || 0xffffff;
     if (this.damageLevel === 0) return base;
+    return this._shiftDamage(base);
+  }
+
+  get color2() {
+    if (this.hitFlashTimer > 0) return 0xffffff;
+    const key = this.type.toUpperCase();
+    const base = CONFIG.COLORS_2[key] || CONFIG.COLORS[key] || 0xffffff;
+    if (this.damageLevel === 0) return base;
+    return this._shiftDamage(base);
+  }
+
+  _shiftDamage(base) {
     // Shift toward red/white when damaged
     const r = (base >> 16) & 0xff;
     const g = (base >> 8) & 0xff;
@@ -231,12 +244,29 @@ export class Enemy {
       case 'diving': {
         this.diveT += dt * this.diveSpeed;
         if (this.diveT >= 1) {
-          // Start return to formation
-          this.state = 'returning';
-          this.returnStartX = this.x;
-          this.returnStartY = this.y;
-          this.returnStartZ = this.z;
-          this.returnT = 0;
+          // Check if endpoint is off-screen → re-enter from top
+          const endP = this.divePath(1);
+          const isOffScreen = endP.y > CONFIG.HEIGHT + 20 || endP.y < -20 ||
+                              endP.x < -20 || endP.x > CONFIG.WIDTH + 20;
+          if (isOffScreen) {
+            // Warp above screen and re-enter toward formation
+            this.state = 're-entering';
+            // Pick a re-entry point above screen, offset toward formation slot
+            this.returnStartX = formationX + (Math.random() - 0.5) * 120;
+            this.returnStartY = -50;
+            this.returnStartZ = 30;
+            this.x = this.returnStartX;
+            this.y = this.returnStartY;
+            this.z = this.returnStartZ;
+            this.returnT = 0;
+          } else {
+            // Legacy: smooth return for paths that end on-screen
+            this.state = 'returning';
+            this.returnStartX = this.x;
+            this.returnStartY = this.y;
+            this.returnStartZ = this.z;
+            this.returnT = 0;
+          }
         } else {
           const p = this.divePath(this.diveT);
           this.x = p.x;
@@ -258,6 +288,28 @@ export class Enemy {
           const ease = t * t * (3 - 2 * t); // smoothstep
           this.x = this.returnStartX + (formationX - this.returnStartX) * ease;
           this.y = this.returnStartY + (formationY - this.returnStartY) * ease;
+          this.z = this.returnStartZ + (formationZ - this.returnStartZ) * ease;
+        }
+        break;
+      }
+
+      case 're-entering': {
+        // Fly from above screen back to formation slot — smooth curve
+        this.returnT += dt * 0.7;
+        if (this.returnT >= 1) {
+          this.state = 'holding';
+          this.x = formationX;
+          this.y = formationY;
+          this.z = formationZ;
+        } else {
+          const t = this.returnT;
+          const ease = t * t * (3 - 2 * t);
+          // Bezier-like curve: arc in from top
+          const midX = (this.returnStartX + formationX) * 0.5;
+          const midY = CONFIG.FIELD_TOP + 30;
+          const u = 1 - ease;
+          this.x = u * u * this.returnStartX + 2 * u * ease * midX + ease * ease * formationX;
+          this.y = u * u * this.returnStartY + 2 * u * ease * midY + ease * ease * formationY;
           this.z = this.returnStartZ + (formationZ - this.returnStartZ) * ease;
         }
         break;

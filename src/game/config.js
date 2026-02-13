@@ -29,9 +29,9 @@ export const CONFIG = Object.freeze({
   // Formation
   FORMATION_COLS: 10,
   FORMATION_ROWS: 5,
-  FORMATION_COL_SPACING: 44,
-  FORMATION_ROW_SPACING: 38,
-  FORMATION_BASE_Y: 155,
+  FORMATION_COL_SPACING: 48,
+  FORMATION_ROW_SPACING: 46,
+  FORMATION_BASE_Y: 195,
   FORMATION_Z: 12,
   FORMATION_SWAY_SPEED: 0.4,
   FORMATION_SWAY_AMOUNT: 18,
@@ -69,6 +69,10 @@ export const CONFIG = Object.freeze({
   SCORE_BOSS_WITH_CAPTURE: 1600,
   SCORE_RESCUE_BONUS: 2000,
 
+  // Extra lives
+  EXTRA_LIFE_THRESHOLDS: [15000, 50000],
+  EXTRA_LIFE_REPEAT: 50000,
+
   // Challenge stage
   CHALLENGE_BONUS_PER_HIT: 100,
   CHALLENGE_PERFECT_BONUS: 10000,
@@ -99,10 +103,23 @@ export const CONFIG = Object.freeze({
     SWARM: 0xaaff44,
     BULLET_PLAYER: 0xaaddff,
     BULLET_ENEMY: 0xff4466,
-    HUD: '#44bbff',
+    HUD: '#88ddff',
     BOSS: 0xff4488,
     CAPTURED_SHIP: 0x225588,
     TRACTOR_BEAM: 0x44ddff,
-    STARFIELD: 0x334466,
+    STARFIELD: 0x88bbee,
+  },
+
+  // Secondary accent colors (warm↔cool contrast for max readability with ADD glow)
+  COLORS_2: {
+    GRUNT: 0xffff44,      // yellow spots/wings against green body
+    ATTACKER: 0x44aaff,   // cool blue wings against hot red body
+    COMMANDER: 0xff44aa,  // magenta crown/tentacles against gold body
+    SPINNER: 0x44ffdd,    // cyan spokes against magenta hub/ring
+    BOMBER: 0xffee44,     // bright gold armor/pincers against orange shell
+    GUARDIAN: 0xffaa22,   // warm amber core against cool cyan shield
+    PHANTOM: 0x44ffaa,    // mint eyes/tendrils against purple hood
+    SWARM: 0xff66aa,      // pink legs/antennae against lime body
+    BOSS: 0x44ddff,       // cyan crown/struts against pink body
   },
 });

@@ -42,6 +42,8 @@ export class TitleScene extends Phaser.Scene {
 
     this._time = 0;
     this._started = false;
+    this._idleTimer = 0;
+    this._demoLaunched = false;
 
     // Logo image — source is 2752px wide, fit to ~500px display width
     this._logo = this.add.image(CX, 155, 'logo');
@@ -52,14 +54,14 @@ export class TitleScene extends Phaser.Scene {
 
     // Orbiting demo enemies — inner ring: classic trio, outer ring: new types
     this._orbiters = [
-      { model: GRUNT, color: CONFIG.COLORS.GRUNT, angle: 0, radius: 140, speed: 0.45, y: 370 },
-      { model: ATTACKER, color: CONFIG.COLORS.ATTACKER, angle: Math.PI * 0.666, radius: 140, speed: 0.45, y: 370 },
-      { model: COMMANDER, color: CONFIG.COLORS.COMMANDER, angle: Math.PI * 1.333, radius: 140, speed: 0.45, y: 370 },
+      { model: GRUNT, color: CONFIG.COLORS.GRUNT, color2: CONFIG.COLORS_2.GRUNT, angle: 0, radius: 140, speed: 0.45, y: 370 },
+      { model: ATTACKER, color: CONFIG.COLORS.ATTACKER, color2: CONFIG.COLORS_2.ATTACKER, angle: Math.PI * 0.666, radius: 140, speed: 0.45, y: 370 },
+      { model: COMMANDER, color: CONFIG.COLORS.COMMANDER, color2: CONFIG.COLORS_2.COMMANDER, angle: Math.PI * 1.333, radius: 140, speed: 0.45, y: 370 },
       // Outer ring — new enemy types, counter-rotating
-      { model: SPINNER, color: CONFIG.COLORS.SPINNER, angle: 0.5, radius: 240, speed: -0.3, y: 380, spin: true },
-      { model: BOMBER, color: CONFIG.COLORS.BOMBER, angle: 1.5, radius: 240, speed: -0.3, y: 380 },
-      { model: PHANTOM, color: CONFIG.COLORS.PHANTOM, angle: 2.5, radius: 240, speed: -0.3, y: 380 },
-      { model: GUARDIAN, color: CONFIG.COLORS.GUARDIAN, angle: 3.8, radius: 240, speed: -0.3, y: 380 },
+      { model: SPINNER, color: CONFIG.COLORS.SPINNER, color2: CONFIG.COLORS_2.SPINNER, angle: 0.5, radius: 240, speed: -0.3, y: 380, spin: true },
+      { model: BOMBER, color: CONFIG.COLORS.BOMBER, color2: CONFIG.COLORS_2.BOMBER, angle: 1.5, radius: 240, speed: -0.3, y: 380 },
+      { model: PHANTOM, color: CONFIG.COLORS.PHANTOM, color2: CONFIG.COLORS_2.PHANTOM, angle: 2.5, radius: 240, speed: -0.3, y: 380 },
+      { model: GUARDIAN, color: CONFIG.COLORS.GUARDIAN, color2: CONFIG.COLORS_2.GUARDIAN, angle: 3.8, radius: 240, speed: -0.3, y: 380 },
     ];
 
     // Starfield (scrolling)
@@ -101,6 +103,11 @@ export class TitleScene extends Phaser.Scene {
       this.soundEngine.playTitlePulse();
     }
 
+    // Any key press resets idle timer
+    if (!this._started && this.input.keyboard.keys.some(k => k && k.isDown)) {
+      this._idleTimer = 0;
+    }
+
     // Start game
     if (!this._started &&
         (Phaser.Input.Keyboard.JustDown(this.startKey) ||
@@ -110,6 +117,16 @@ export class TitleScene extends Phaser.Scene {
       this.time.delayedCall(300, () => {
         this.scene.start('GameScene');
       });
+    }
+
+    // Attract mode: launch demo after 8 seconds idle (only after title fully revealed)
+    if (!this._started && !this._demoLaunched && this._time > 3.5) {
+      this._idleTimer += dt;
+      if (this._idleTimer >= 8) {
+        this._demoLaunched = true;
+        this.scene.start('GameScene', { demo: true });
+        return;
+      }
     }
 
     // Spawn expanding rings periodically
@@ -139,7 +156,7 @@ export class TitleScene extends Phaser.Scene {
 
     // Starfield
     for (const star of this._stars) {
-      this.bgGfx.lineStyle(star.size, 0x334466, star.brightness);
+      this.bgGfx.lineStyle(star.size, CONFIG.COLORS.STARFIELD, star.brightness);
       this.bgGfx.beginPath();
       this.bgGfx.moveTo(star.x, star.y);
       this.bgGfx.lineTo(star.x, star.y + star.speed * 0.04);
@@ -200,7 +217,8 @@ export class TitleScene extends Phaser.Scene {
 
       const lines = projectModel(o.model, ox, oy, oz, 1.4, rotation);
       for (const line of lines) {
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, o.color);
+        const col = line.c ? o.color2 : o.color;
+        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
       }
     }
 
@@ -220,15 +238,15 @@ export class TitleScene extends Phaser.Scene {
 
     // ─── SUB-TEXT ───
     if (this._time > 2.2) {
-      // "PRESS ENTER" blinking
+      // "PRESS FIRE" blinking
       const blink = Math.sin(this._time * 3.5) > -0.3;
       if (blink) {
-        const subText = 'PRESS ENTER';
+        const subText = 'PRESS FIRE';
         const subScale = 4;
         const subW = vectorTextWidth(subText, subScale, 1.2);
         const subLines = vectorText(subText, CX - subW / 2, 560, subScale, 1.2);
         for (const line of subLines) {
-          drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x6688cc);
+          drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x99bbee);
         }
       }
 
@@ -239,7 +257,7 @@ export class TitleScene extends Phaser.Scene {
         const hiW = vectorTextWidth(hiText, hiScale, 1);
         const hiLines = vectorText(hiText, CX - hiW / 2, 240, hiScale, 1);
         for (const line of hiLines) {
-          drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x445577);
+          drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x88aadd);
         }
       }
 
@@ -249,7 +267,7 @@ export class TitleScene extends Phaser.Scene {
       const cpW = vectorTextWidth(cpText, cpScale, 1);
       const cpLines = vectorText(cpText, CX - cpW / 2, 620, cpScale, 1);
       for (const line of cpLines) {
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x445577);
+        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x88aadd);
       }
     }
 
@@ -261,7 +279,7 @@ export class TitleScene extends Phaser.Scene {
       const credW = vectorTextWidth(credText, credScale, 1);
       const credLines = vectorText(credText, CX - credW / 2, 300, credScale, 1);
       for (const line of credLines) {
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x334466);
+        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x7799bb);
       }
     }
   }

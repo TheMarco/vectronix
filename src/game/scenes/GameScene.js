@@ -16,10 +16,21 @@ import {
   drawGlowCircle,
   fillMaskCircle,
 } from '../rendering/GlowRenderer.js';
+import { DemoAI } from '../ai/DemoAI.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
     super({ key: 'GameScene' });
+  }
+
+  preload() {
+    this.load.audio('intro', 'music/intro.mp3');
+  }
+
+  init(data) {
+    this._demoMode = !!(data && data.demo);
+    this._demoTimer = 0;
+    this._demoMaxTime = 30; // seconds
   }
 
   create() {
@@ -35,13 +46,32 @@ export class GameScene extends Phaser.Scene {
     this.collisionSystem = new CollisionSystem();
     this.explosionRenderer = new ExplosionRenderer();
     this.score = 0;
+    this._prevScore = 0;
+    this._nextExtraLifeIndex = 0;
     this.gameOver = false;
     this.gameOverTimer = 0;
+
+    // Death freeze (hitstop)
+    this._freezeTimer = 0;
+    this._freezePendingExplosion = null;
 
     // Screen shake
     this._shakeAmount = 0;
     this._shakeOffsetX = 0;
     this._shakeOffsetY = 0;
+
+    // Stats tracking
+    this._stats = {
+      shotsFired: 0,
+      shotsHit: 0,
+      enemiesKilledByType: {},
+      wavesCleared: 0,
+    };
+
+    // Demo AI
+    if (this._demoMode) {
+      this._demoAI = new DemoAI();
+    }
 
     // Wire up collision callbacks
     this.collisionSystem.onEnemyKilled = (enemy) => {
@@ -65,6 +95,11 @@ export class GameScene extends Phaser.Scene {
       if (this.waveSystem.isChallenge) {
         this.waveSystem.challengeHits++;
       }
+
+      // Stats
+      this._stats.shotsHit++;
+      const t = enemy.type;
+      this._stats.enemiesKilledByType[t] = (this._stats.enemiesKilledByType[t] || 0) + 1;
     };
     this.collisionSystem.onEnemyHit = (enemy) => {
       this.soundEngine.playEnemyHit();
@@ -74,9 +109,10 @@ export class GameScene extends Phaser.Scene {
       // No player damage during challenge stages
       if (this.waveSystem.isChallenge) return;
 
-      this.explosionRenderer.spawn(this.player.x, this.player.y, CONFIG.COLORS.PLAYER, 20);
+      // Death freeze: spawn explosion but freeze everything for 200ms
+      this._freezeTimer = 0.2;
+      this._freezePendingExplosion = { x: this.player.x, y: this.player.y };
       this.soundEngine.playPlayerDeath();
-      this._shakeAmount = 12;
       if (this.player.isGameOver) {
         this.gameOver = true;
         // Save high score
@@ -193,16 +229,46 @@ export class GameScene extends Phaser.Scene {
     this.fireKey2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
     this.restartKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
 
-    // Generate static starfield
+    // Pause state
+    this._paused = false;
+    this.input.keyboard.on('keydown-ESC', () => {
+      if (this.gameOver) return;
+      this._paused = !this._paused;
+    });
+
+    // Parallax scrolling starfield (3 layers)
     this._stars = [];
-    for (let i = 0; i < 80; i++) {
-      this._stars.push({
-        x: CONFIG.FIELD_LEFT + Math.random() * (CONFIG.FIELD_RIGHT - CONFIG.FIELD_LEFT),
-        y: CONFIG.FIELD_TOP + Math.random() * (CONFIG.FIELD_BOTTOM - CONFIG.FIELD_TOP),
-        brightness: 0.15 + Math.random() * 0.35,
-        size: 0.5 + Math.random() * 1.0,
-      });
+    const starLayers = [
+      { count: 40, speed: 22, brightnessMin: 0.25, brightnessMax: 0.45, sizeMin: 0.5, sizeMax: 0.8 },
+      { count: 30, speed: 48, brightnessMin: 0.40, brightnessMax: 0.65, sizeMin: 0.7, sizeMax: 1.1 },
+      { count: 15, speed: 85, brightnessMin: 0.55, brightnessMax: 0.85, sizeMin: 1.0, sizeMax: 1.5 },
+    ];
+    for (const layer of starLayers) {
+      for (let i = 0; i < layer.count; i++) {
+        this._stars.push({
+          x: CONFIG.FIELD_LEFT + Math.random() * (CONFIG.FIELD_RIGHT - CONFIG.FIELD_LEFT),
+          y: CONFIG.FIELD_TOP + Math.random() * (CONFIG.FIELD_BOTTOM - CONFIG.FIELD_TOP),
+          speed: layer.speed,
+          brightness: layer.brightnessMin + Math.random() * (layer.brightnessMax - layer.brightnessMin),
+          size: layer.sizeMin + Math.random() * (layer.sizeMax - layer.sizeMin),
+        });
+      }
     }
+
+    // Intro music (real games only, not demo/attract)
+    if (!this._demoMode) {
+      this._introMusic = this.sound.add('intro');
+      this._introMusic.play();
+    }
+
+    // Stop intro music when scene shuts down
+    this.events.on('shutdown', () => {
+      if (this._introMusic) {
+        this._introMusic.stop();
+        this._introMusic.destroy();
+        this._introMusic = null;
+      }
+    });
 
     // Start first wave
     this.waveSystem.startWave(this.formation);
@@ -213,6 +279,54 @@ export class GameScene extends Phaser.Scene {
   update(time, delta) {
     const dt = delta / 1000;
     if (dt > 0.1) return;
+
+    // Demo mode: any key returns to title (use isDown to avoid consuming JustDown state)
+    if (this._demoMode) {
+      this._demoTimer += dt;
+      const anyKeyDown = this.input.keyboard.keys.some(k => k && k.isDown);
+      if (anyKeyDown || this._demoTimer >= this._demoMaxTime ||
+          (this.gameOver && this.gameOverTimer > 2)) {
+        this.scene.start('TitleScene');
+        return;
+      }
+    }
+
+    // Pause — skip all game logic, just keep rendering (not in demo mode)
+    if (this._paused && !this._demoMode) {
+      this.hud.showPause(true);
+      return;
+    }
+    this.hud.showPause(false);
+
+    // Scroll starfield (always, even during freeze)
+    for (const star of this._stars) {
+      star.y += star.speed * dt;
+      if (star.y > CONFIG.FIELD_BOTTOM) {
+        star.y = CONFIG.FIELD_TOP;
+        star.x = CONFIG.FIELD_LEFT + Math.random() * (CONFIG.FIELD_RIGHT - CONFIG.FIELD_LEFT);
+      }
+    }
+
+    // Death freeze: skip all game logic but still render
+    if (this._freezeTimer > 0) {
+      this._freezeTimer -= dt;
+      if (this._freezeTimer <= 0) {
+        // Freeze ended — now spawn explosion and start shake
+        if (this._freezePendingExplosion) {
+          this.explosionRenderer.spawn(
+            this._freezePendingExplosion.x,
+            this._freezePendingExplosion.y,
+            CONFIG.COLORS.PLAYER, 20
+          );
+          this._freezePendingExplosion = null;
+        }
+        this._shakeAmount = 12;
+        this._freezeTimer = 0;
+      }
+      // During freeze: still render but skip update logic
+      this._renderFrame();
+      return;
+    }
 
     // Screen shake decay
     if (this._shakeAmount > 0) {
@@ -228,14 +342,34 @@ export class GameScene extends Phaser.Scene {
 
     // ─── INPUT ───
     let inputDir = 0;
-    if (this.cursors.left.isDown) inputDir = -1;
-    else if (this.cursors.right.isDown) inputDir = 1;
+    let firePressed = false;
 
-    const firePressed = Phaser.Input.Keyboard.JustDown(this.fireKey) || Phaser.Input.Keyboard.JustDown(this.fireKey2);
+    if (this._demoMode) {
+      // AI input
+      const aiResult = this._demoAI.update(dt, this.player, this.waveSystem.enemies, this.bulletManager.bullets);
+      inputDir = aiResult.inputDir;
+      firePressed = aiResult.shouldFire;
+    } else {
+      const touchX = this.game.registry.get('touchX');
+      if (touchX == null) {
+        if (this.cursors.left.isDown) inputDir = -1;
+        else if (this.cursors.right.isDown) inputDir = 1;
+      }
+      firePressed = Phaser.Input.Keyboard.JustDown(this.fireKey) || Phaser.Input.Keyboard.JustDown(this.fireKey2);
+    }
 
     // ─── UPDATE ───
     if (!this.gameOver) {
       this.player.update(dt, inputDir);
+
+      // Touch: 1:1 position mapping overrides velocity-based movement
+      if (!this._demoMode) {
+        const touchX = this.game.registry.get('touchX');
+        if (touchX != null && this.player.alive) {
+          const margin = this.player.dualFighter ? 16 + CONFIG.DUAL_OFFSET_X : 16;
+          this.player.x = Math.max(CONFIG.FIELD_LEFT + margin, Math.min(CONFIG.FIELD_RIGHT - margin, touchX));
+        }
+      }
 
       if (firePressed && this.player.alive && !this.player.invulnerable) {
         if (this.player.dualFighter) {
@@ -243,10 +377,12 @@ export class GameScene extends Phaser.Scene {
           const x2 = this.player.x + CONFIG.DUAL_OFFSET_X;
           if (this.bulletManager.fireDual(x1, this.player.y, x2, this.player.y)) {
             this.soundEngine.playFire();
+            this._stats.shotsFired += 2;
           }
         } else {
           if (this.bulletManager.firePlayer(this.player.x, this.player.y)) {
             this.soundEngine.playFire();
+            this._stats.shotsFired++;
           }
         }
       }
@@ -286,8 +422,12 @@ export class GameScene extends Phaser.Scene {
         this.collisionSystem.update(this.player, this.waveSystem.enemies, this.bulletManager, this.waveSystem.capturedShips);
       }
 
+      // Extra life check
+      this._checkExtraLife();
+
       // Wave transition
       if (this.waveSystem.waveComplete && this.waveSystem.waveTransitionTimer <= 0) {
+        this._stats.wavesCleared++;
         this.waveSystem.startWave(this.formation);
         if (!this.waveSystem.isChallenge) {
           this.hud.showMessage(`WAVE ${this.waveSystem.waveNumber}`, 2000);
@@ -296,13 +436,21 @@ export class GameScene extends Phaser.Scene {
       }
     } else {
       this.gameOverTimer += dt;
-      if (this.gameOverTimer > 1.5 && Phaser.Input.Keyboard.JustDown(this.restartKey)) {
+      if (this._demoMode) {
+        // Demo mode: auto-return after brief delay
+      } else if (this.gameOverTimer > 3.5 && (Phaser.Input.Keyboard.JustDown(this.restartKey) || Phaser.Input.Keyboard.JustDown(this.fireKey) || Phaser.Input.Keyboard.JustDown(this.fireKey2))) {
         this.scene.start('TitleScene');
         return;
       }
     }
 
     this.explosionRenderer.update(delta);
+
+    this._renderFrame();
+  }
+
+  _renderFrame() {
+    const dt = this.game.loop.delta / 1000;
 
     // ─── RENDER ───
     this.bgGfx.clear();
@@ -331,7 +479,16 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.explosionRenderer.draw(this.gfx);
-    this.hud.update(dt, this.score, this.player.lives, this.waveSystem.waveNumber, this.gameOver);
+
+    // Demo mode label
+    if (this._demoMode) {
+      this.hud.showDemoLabel(true);
+    }
+
+    this.hud.update(
+      dt, this.score, this.player.lives, this.waveSystem.waveNumber,
+      this.gameOver, this._demoMode, this._stats
+    );
   }
 
   _buildRenderList() {
@@ -522,11 +679,13 @@ export class GameScene extends Phaser.Scene {
         { width: 2, alpha: alpha },
       ];
       for (const line of lines) {
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, enemy.color, false, phantomPasses);
+        const col = line.c ? enemy.color2 : enemy.color;
+        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col, false, phantomPasses);
       }
     } else {
       for (const line of lines) {
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, enemy.color);
+        const col = line.c ? enemy.color2 : enemy.color;
+        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
       }
     }
   }
@@ -600,13 +759,35 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  _checkExtraLife() {
+    const thresholds = CONFIG.EXTRA_LIFE_THRESHOLDS;
+    const repeat = CONFIG.EXTRA_LIFE_REPEAT;
+
+    // Determine the next threshold
+    let nextThreshold;
+    if (this._nextExtraLifeIndex < thresholds.length) {
+      nextThreshold = thresholds[this._nextExtraLifeIndex];
+    } else {
+      const extra = this._nextExtraLifeIndex - thresholds.length;
+      nextThreshold = thresholds[thresholds.length - 1] + repeat * (extra + 1);
+    }
+
+    if (this.score >= nextThreshold && this._prevScore < nextThreshold) {
+      this.player.lives++;
+      this._nextExtraLifeIndex++;
+      this.soundEngine.playExtraLife();
+      this.hud.showExtraLife();
+    }
+    this._prevScore = this.score;
+  }
+
   _drawStarfield() {
     for (const star of this._stars) {
-      const s = star.size;
-      this.bgGfx.lineStyle(s, CONFIG.COLORS.STARFIELD, star.brightness);
+      const streakLen = star.speed * 0.08;
+      this.bgGfx.lineStyle(star.size, CONFIG.COLORS.STARFIELD, star.brightness);
       this.bgGfx.beginPath();
-      this.bgGfx.moveTo(star.x - s * 0.5, star.y);
-      this.bgGfx.lineTo(star.x + s * 0.5, star.y);
+      this.bgGfx.moveTo(star.x, star.y);
+      this.bgGfx.lineTo(star.x, star.y + streakLen);
       this.bgGfx.strokePath();
     }
   }

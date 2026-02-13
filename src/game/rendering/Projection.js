@@ -70,6 +70,7 @@ export function projectModelFlat(lines, screenX, screenY, modelScale, rotation =
       y1: screenY + ay * modelScale,
       x2: screenX + bx * modelScale,
       y2: screenY + by * modelScale,
+      c: line.c || 0,
     });
   }
 
@@ -115,6 +116,7 @@ export function projectModel(lines, worldX, worldY, worldZ, modelScale, rotation
       x2: pb.x, y2: pb.y,
       depth,
       scale: (pa.scale + pb.scale) * 0.5,
+      c: line.c || 0,
     });
   }
 
