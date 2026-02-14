@@ -328,6 +328,97 @@ export function createTractorBeamDive(startX, startY, playerX) {
   };
 }
 
+// ═══════════════════════════════════════════════════════════
+// GROUP FORMATION DIVE PATHS
+// ═══════════════════════════════════════════════════════════
+
+const GROUP_FORMATIONS = {
+  v:       [[0, 0], [-35, 22], [35, 22], [-70, 44], [70, 44]],
+  echelon: [[0, 0], [30, 18],  [60, 36], [90, 54],  [120, 72]],
+  line:    [[-80, 0], [-40, 0], [0, 0],   [40, 0],   [80, 0]],
+};
+
+/**
+ * GROUP DIVE: Coordinated formation dive for N enemies.
+ * Enemies blend from their actual positions into a shared reference
+ * trajectory with formation offsets, then hold formation through
+ * attack run and exit.
+ *
+ * @param {Array} enemies - Array of enemy objects (need .x, .y for start pos)
+ * @param {number} playerX - Current player X position
+ * @param {string} formationType - 'v' | 'echelon' | 'line'
+ * @returns {Array} Array of path functions, one per enemy
+ */
+export function createGroupDivePaths(enemies, playerX, formationType) {
+  const offsets = GROUP_FORMATIONS[formationType] || GROUP_FORMATIONS.v;
+
+  // Group center as reference start
+  let cx = 0, cy = 0;
+  for (const e of enemies) { cx += e.x; cy += e.y; }
+  cx /= enemies.length;
+  cy /= enemies.length;
+
+  const side = cx > CONFIG.CENTER_X ? 1 : -1;
+  const attackY = CONFIG.PLAYER_Y - 55;
+  const exitX = side > 0 ? -80 : CONFIG.WIDTH + 80;
+
+  // Reference trajectory control points
+  const refStartX = cx;
+  const refStartY = cy;
+  const refMidX = playerX + side * 60;
+  const refSweepEndX = refMidX - side * 200;
+
+  // Build a path for each enemy
+  return enemies.map((enemy, i) => {
+    const offset = offsets[i] || [0, 0];
+    const ox = offset[0] * -side; // mirror offsets based on approach side
+    const oy = offset[1];
+    const startX = enemy.x;
+    const startY = enemy.y;
+
+    return function(t) {
+      let refX, refY, refZ;
+
+      if (t < 0.4) {
+        // Approach: dive toward player
+        const lt = smoothstep(t / 0.4);
+        refX = lerp(refStartX, refMidX, lt);
+        refY = lerp(refStartY, attackY, lt);
+        refZ = lerp(CONFIG.FORMATION_Z, -6, lt);
+      } else if (t < 0.7) {
+        // Sweep across at attack altitude
+        const lt = smoothstep((t - 0.4) / 0.3);
+        refX = lerp(refMidX, refSweepEndX, lt);
+        refY = attackY - Math.sin(lt * Math.PI) * 35;
+        refZ = lerp(-6, -3, lt);
+      } else {
+        // Exit off-screen
+        const lt = smoothstep((t - 0.7) / 0.3);
+        refX = lerp(refSweepEndX, exitX, lt);
+        refY = lerp(attackY, CONFIG.CENTER_Y - 40, lt);
+        refZ = lerp(-3, CONFIG.FORMATION_Z, lt);
+      }
+
+      // Blend from actual start position into formation offset
+      let x, y;
+      if (t < 0.3) {
+        // Converge: blend from actual position to (ref + offset)
+        const blend = smoothstep(t / 0.3);
+        const targetX = refX + ox;
+        const targetY = refY + oy;
+        x = lerp(startX, targetX, blend);
+        y = lerp(startY, targetY, blend);
+      } else {
+        // Hold formation offset
+        x = refX + ox;
+        y = refY + oy;
+      }
+
+      return { x, y, z: refZ };
+    };
+  });
+}
+
 // All dive path generators for random selection
 export const DIVE_PATHS = [
   createSwoopDive,
@@ -352,21 +443,14 @@ export function createEntranceFromLeft(targetX, targetY, delay) {
   const midY = CONFIG.FIELD_TOP + 40;
 
   return function(t) {
-    if (t < 0.5) {
-      const lt = t / 0.5;
+    if (t < 0.8) {
+      const lt = t / 0.8;
       const x = bezier2(startX, midX, targetX, lt);
       const y = bezier2(startY, midY, targetY, lt);
       const z = lerp(30, CONFIG.FORMATION_Z, lt);
       return { x, y, z };
     }
-    // Ease into position
-    const lt = (t - 0.5) / 0.5;
-    const ease = lt * lt * (3 - 2 * lt);
-    return {
-      x: lerp(targetX + (targetX - midX) * 0.1, targetX, ease),
-      y: lerp(targetY + (targetY - midY) * 0.1, targetY, ease),
-      z: CONFIG.FORMATION_Z,
-    };
+    return { x: targetX, y: targetY, z: CONFIG.FORMATION_Z };
   };
 }
 
@@ -377,20 +461,14 @@ export function createEntranceFromRight(targetX, targetY, delay) {
   const midY = CONFIG.FIELD_TOP + 40;
 
   return function(t) {
-    if (t < 0.5) {
-      const lt = t / 0.5;
+    if (t < 0.8) {
+      const lt = t / 0.8;
       const x = bezier2(startX, midX, targetX, lt);
       const y = bezier2(startY, midY, targetY, lt);
       const z = lerp(30, CONFIG.FORMATION_Z, lt);
       return { x, y, z };
     }
-    const lt = (t - 0.5) / 0.5;
-    const ease = lt * lt * (3 - 2 * lt);
-    return {
-      x: lerp(targetX + (targetX - midX) * 0.1, targetX, ease),
-      y: lerp(targetY + (targetY - midY) * 0.1, targetY, ease),
-      z: CONFIG.FORMATION_Z,
-    };
+    return { x: targetX, y: targetY, z: CONFIG.FORMATION_Z };
   };
 }
 
@@ -401,20 +479,14 @@ export function createEntranceFromTop(targetX, targetY, delay) {
   const midY = CONFIG.FIELD_TOP + 20;
 
   return function(t) {
-    if (t < 0.6) {
-      const lt = t / 0.6;
+    if (t < 0.8) {
+      const lt = t / 0.8;
       const x = bezier2(startX, midX, targetX, lt);
       const y = bezier2(startY, midY, targetY, lt);
       const z = lerp(40, CONFIG.FORMATION_Z, lt);
       return { x, y, z };
     }
-    const lt = (t - 0.6) / 0.4;
-    const ease = lt * lt * (3 - 2 * lt);
-    return {
-      x: targetX,
-      y: lerp(targetY - 10, targetY, ease),
-      z: CONFIG.FORMATION_Z,
-    };
+    return { x: targetX, y: targetY, z: CONFIG.FORMATION_Z };
   };
 }
 
@@ -480,6 +552,104 @@ export function createEntranceCorkscrew(targetX, targetY, delay) {
   };
 }
 
+/**
+ * Wide swoop: enter from the side, wide upward U-curve to formation
+ * (enters at mid-screen height — never crosses player zone)
+ */
+export function createEntranceBottomSwoop(targetX, targetY, delay) {
+  const side = delay % 1.5 < 0.75 ? -1 : 1;
+  const startX = side > 0 ? CONFIG.WIDTH + 80 : -80;
+  const startY = CONFIG.CENTER_Y + 40;
+  const peakY = CONFIG.FIELD_TOP + 30;
+
+  return function(t) {
+    if (t < 0.5) {
+      // Wide upward U-curve from side
+      const lt = t / 0.5;
+      const x = bezier2(startX, CONFIG.CENTER_X + side * 60, targetX, lt);
+      const y = bezier2(startY, peakY - 50, peakY, lt);
+      const z = lerp(25, CONFIG.FORMATION_Z + 3, lt);
+      return { x, y, z };
+    }
+    // Settle into formation slot
+    const lt = (t - 0.5) / 0.5;
+    const ease = lt * lt * (3 - 2 * lt);
+    return {
+      x: targetX,
+      y: lerp(peakY, targetY, ease),
+      z: lerp(CONFIG.FORMATION_Z + 3, CONFIG.FORMATION_Z, ease),
+    };
+  };
+}
+
+/**
+ * Diving loop: enter from top, dive down to mid-screen, loop back up to formation
+ */
+export function createEntranceDivingLoop(targetX, targetY, delay) {
+  const startX = targetX + Math.sin(delay * 3) * 150;
+  const startY = -60;
+  const loopY = CONFIG.CENTER_Y + 60;
+  const side = startX > targetX ? 1 : -1;
+
+  return function(t) {
+    if (t < 0.3) {
+      // Dive down
+      const lt = t / 0.3;
+      const x = lerp(startX, targetX + side * 100, lt);
+      const y = lerp(startY, loopY, lt * lt);
+      const z = lerp(35, -5, lt);
+      return { x, y, z };
+    }
+    if (t < 0.6) {
+      // Loop at bottom — half circle
+      const lt = (t - 0.3) / 0.3;
+      const angle = lt * Math.PI;
+      const x = targetX + side * 100 - Math.sin(angle) * 100 * side;
+      const y = loopY - Math.sin(angle) * 60;
+      const z = lerp(-5, CONFIG.FORMATION_Z, lt);
+      return { x, y, z };
+    }
+    // Rise to formation (start where Phase 2 half-circle ends)
+    const lt = (t - 0.6) / 0.4;
+    const ease = lt * lt * (3 - 2 * lt);
+    return {
+      x: lerp(targetX + side * 100, targetX, ease),
+      y: lerp(loopY, targetY, ease),
+      z: CONFIG.FORMATION_Z,
+    };
+  };
+}
+
+/**
+ * Cascade: enter from corner, sweep diagonally across screen, then arc to slot
+ */
+export function createEntranceCascade(targetX, targetY, delay) {
+  const fromRight = delay % 1 > 0.5;
+  const startX = fromRight ? CONFIG.WIDTH + 60 : -60;
+  const startY = -40;
+  const sweepX = fromRight ? CONFIG.FIELD_LEFT + 80 : CONFIG.FIELD_RIGHT - 80;
+  const sweepY = CONFIG.CENTER_Y;
+
+  return function(t) {
+    if (t < 0.5) {
+      // Diagonal sweep across screen
+      const lt = t / 0.5;
+      const x = bezier2(startX, (startX + sweepX) * 0.5, sweepX, lt);
+      const y = bezier2(startY, CONFIG.FIELD_TOP + 30, sweepY, lt);
+      const z = lerp(30, CONFIG.FORMATION_Z + 3, lt);
+      return { x, y, z };
+    }
+    // Arc to formation slot
+    const lt = (t - 0.5) / 0.5;
+    const ease = lt * lt * (3 - 2 * lt);
+    return {
+      x: lerp(sweepX, targetX, ease),
+      y: lerp(sweepY, targetY, ease),
+      z: lerp(CONFIG.FORMATION_Z + 3, CONFIG.FORMATION_Z, ease),
+    };
+  };
+}
+
 export const ENTRANCE_PATHS = [
   createEntranceFromLeft,
   createEntranceFromRight,
@@ -487,6 +657,9 @@ export const ENTRANCE_PATHS = [
   createEntranceSpiral,
   createEntranceFigureS,
   createEntranceCorkscrew,
+  createEntranceBottomSwoop,
+  createEntranceDivingLoop,
+  createEntranceCascade,
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -537,26 +710,27 @@ function challengeSwoopRL(posInGroup) {
 function challengeDiveLoop(posInGroup) {
   const side = posInGroup % 2 === 0 ? -1 : 1;
   const spread = Math.floor(posInGroup / 2) * 40 + 30;
+  const loopY = CY + 80; // stay well above player
   return function(t) {
     let x, y, z;
     if (t < 0.35) {
       // Dive down center
       const lt = t / 0.35;
       x = CX + side * spread * lt;
-      y = lerp(-60, CONFIG.PLAYER_Y - 40, lt);
+      y = lerp(-60, loopY, lt);
       z = lerp(30, -8, lt);
     } else if (t < 0.65) {
       // Curve at bottom
       const lt = (t - 0.35) / 0.3;
       const angle = lt * Math.PI;
       x = CX + side * (spread + Math.sin(angle) * 120);
-      y = CONFIG.PLAYER_Y - 40 + Math.sin(angle) * 40;
+      y = loopY + Math.sin(angle) * 30;
       z = lerp(-8, 5, lt);
     } else {
-      // Exit upward
+      // Exit upward (start where half-circle ends: CX + side*spread)
       const lt = (t - 0.65) / 0.35;
-      x = CX + side * (spread + 120) * (1 - lt * 0.5);
-      y = lerp(CONFIG.PLAYER_Y - 40, -60, lt);
+      x = lerp(CX + side * spread, CX + side * (spread + 80), lt);
+      y = lerp(loopY, -60, lt);
       z = lerp(5, 30, lt);
     }
     return { x, y, z };
@@ -585,7 +759,7 @@ function challengeZigzag(posInGroup) {
   const xOff = (posInGroup - 2) * 44;
   return function(t) {
     const x = CX + xOff + Math.sin(t * Math.PI * 4) * 130;
-    const y = lerp(-60, H + 60, t);
+    const y = lerp(-60, CY + 100, t);
     const z = CONFIG.FORMATION_Z + Math.sin(t * Math.PI * 2) * -10;
     return { x, y, z };
   };
@@ -600,7 +774,7 @@ function challengeArc(posInGroup, mirror) {
   return function(t) {
     const x = lerp(dir > 0 ? -60 : W + 60, dir > 0 ? W + 60 : -60, t);
     const arcY = Math.sin(t * Math.PI) * 280;
-    const y = H - 40 - arcY + yOff * (1 - t);
+    const y = CY + 80 - arcY + yOff * (1 - t);
     const z = CONFIG.FORMATION_Z + Math.sin(t * Math.PI) * -18;
     return { x, y, z };
   };
@@ -621,7 +795,7 @@ function challengeVFormation(posInGroup) {
   const [xOff, yOff] = vOffsets[posInGroup] || [0, 0];
   return function(t) {
     const x = CX + xOff + Math.sin(t * Math.PI * 2) * 80;
-    const y = lerp(-60 - yOff, H + 60, t);
+    const y = lerp(-60 - yOff, CY + 100, t);
     const z = CONFIG.FORMATION_Z + Math.sin(t * Math.PI) * -10;
     return { x, y, z };
   };
@@ -633,31 +807,44 @@ function challengeVFormation(posInGroup) {
 function challengeCircle(posInGroup, clockwise) {
   const angleOff = posInGroup * 0.15;
   const dir = clockwise ? 1 : -1;
+  const radius = 200;
+
+  // Precompute circle position at entry/exit transitions for seamless joins
+  const entryAngle = angleOff * Math.PI * 2 * dir;
+  const circEntryX = CX + Math.cos(entryAngle) * radius;
+  const circEntryY = CY - 30 + Math.sin(entryAngle) * 160;
+  const circEntryZ = CONFIG.FORMATION_Z + Math.sin(entryAngle) * -12;
+
+  const exitAngle = (1 + angleOff) * Math.PI * 2 * dir;
+  const circExitX = CX + Math.cos(exitAngle) * radius;
+  const circExitY = CY - 30 + Math.sin(exitAngle) * 160;
+  const circExitZ = CONFIG.FORMATION_Z + Math.sin(exitAngle) * -12;
+
+  const startX = clockwise ? -60 : W + 60;
+  const endX = clockwise ? W + 60 : -60;
+
   return function(t) {
     if (t < 0.15) {
-      // Enter from left/right
+      // Enter from side → match circle entry point
       const lt = t / 0.15;
-      const startX = clockwise ? -60 : W + 60;
       return {
-        x: lerp(startX, CX + dir * 200, lt),
-        y: lerp(CY, CY - 100, lt),
-        z: lerp(30, CONFIG.FORMATION_Z, lt),
+        x: lerp(startX, circEntryX, lt),
+        y: lerp(CY, circEntryY, lt),
+        z: lerp(30, circEntryZ, lt),
       };
     }
     if (t > 0.85) {
-      // Exit opposite side
+      // Exit from circle exit point → off-screen
       const lt = (t - 0.85) / 0.15;
-      const endX = clockwise ? W + 60 : -60;
       return {
-        x: lerp(CX + dir * 200, endX, lt),
-        y: lerp(CY - 100, CY, lt),
-        z: lerp(CONFIG.FORMATION_Z, 30, lt),
+        x: lerp(circExitX, endX, lt),
+        y: lerp(circExitY, CY, lt),
+        z: lerp(circExitZ, 30, lt),
       };
     }
     // Circle portion
     const ct = (t - 0.15) / 0.7;
     const angle = (ct + angleOff) * Math.PI * 2 * dir;
-    const radius = 200;
     return {
       x: CX + Math.cos(angle) * radius,
       y: CY - 30 + Math.sin(angle) * 160,
@@ -685,44 +872,44 @@ export const CHALLENGE_LAYOUTS = [
   ],
   // Layout 2: Dive-loops and figure-8s
   [
-    [challengeDiveLoop(0), challengeDiveLoop(1), challengeDiveLoop(2), challengeDiveLoop(3), challengeDiveLoop(4)],
-    [challengeFigure8(0), challengeFigure8(1), challengeFigure8(2), challengeFigure8(3)],
-    [challengeDiveLoop(0), challengeDiveLoop(1), challengeDiveLoop(2), challengeDiveLoop(3), challengeDiveLoop(4)],
-    [challengeFigure8(0), challengeFigure8(1), challengeFigure8(2), challengeFigure8(3)],
-    [challengeZigzag(0), challengeZigzag(1), challengeZigzag(2), challengeZigzag(3), challengeZigzag(4)],
-    [challengeFigure8(0), challengeFigure8(1), challengeFigure8(2), challengeFigure8(3)],
-    [challengeDiveLoop(0), challengeDiveLoop(1), challengeDiveLoop(2), challengeDiveLoop(3), challengeDiveLoop(4)],
+    [challengeDiveLoop(0), challengeDiveLoop(1), challengeDiveLoop(2), challengeDiveLoop(3)],
+    [challengeFigure8(0), challengeFigure8(1), challengeFigure8(2)],
+    [challengeDiveLoop(0), challengeDiveLoop(1), challengeDiveLoop(2), challengeDiveLoop(3)],
+    [challengeFigure8(0), challengeFigure8(1), challengeFigure8(2)],
+    [challengeZigzag(0), challengeZigzag(1), challengeZigzag(2), challengeZigzag(3)],
+    [challengeFigure8(0), challengeFigure8(1), challengeFigure8(2)],
+    [challengeDiveLoop(0), challengeDiveLoop(1), challengeDiveLoop(2), challengeDiveLoop(3)],
   ],
   // Layout 3: V-formations and arcs
   [
-    [challengeVFormation(0), challengeVFormation(1), challengeVFormation(2), challengeVFormation(3), challengeVFormation(4)],
-    [challengeArc(0, false), challengeArc(1, false), challengeArc(2, false), challengeArc(3, false)],
-    [challengeArc(0, true), challengeArc(1, true), challengeArc(2, true), challengeArc(3, true)],
-    [challengeVFormation(0), challengeVFormation(1), challengeVFormation(2), challengeVFormation(3), challengeVFormation(4)],
-    [challengeCircle(0, true), challengeCircle(1, true), challengeCircle(2, true), challengeCircle(3, true)],
-    [challengeArc(0, false), challengeArc(1, false), challengeArc(2, false), challengeArc(3, false)],
-    [challengeCircle(0, false), challengeCircle(1, false), challengeCircle(2, false), challengeCircle(3, false)],
+    [challengeVFormation(0), challengeVFormation(1), challengeVFormation(2), challengeVFormation(3)],
+    [challengeArc(0, false), challengeArc(1, false), challengeArc(2, false)],
+    [challengeArc(0, true), challengeArc(1, true), challengeArc(2, true)],
+    [challengeVFormation(0), challengeVFormation(1), challengeVFormation(2), challengeVFormation(3)],
+    [challengeCircle(0, true), challengeCircle(1, true), challengeCircle(2, true)],
+    [challengeArc(0, false), challengeArc(1, false), challengeArc(2, false)],
+    [challengeCircle(0, false), challengeCircle(1, false), challengeCircle(2, false)],
   ],
   // Layout 4: Zigzags and circles
   [
-    [challengeZigzag(0), challengeZigzag(1), challengeZigzag(2), challengeZigzag(3), challengeZigzag(4)],
-    [challengeCircle(0, true), challengeCircle(1, true), challengeCircle(2, true), challengeCircle(3, true)],
-    [challengeZigzag(0), challengeZigzag(1), challengeZigzag(2), challengeZigzag(3), challengeZigzag(4)],
-    [challengeCircle(0, false), challengeCircle(1, false), challengeCircle(2, false), challengeCircle(3, false)],
+    [challengeZigzag(0), challengeZigzag(1), challengeZigzag(2), challengeZigzag(3)],
+    [challengeCircle(0, true), challengeCircle(1, true), challengeCircle(2, true)],
+    [challengeZigzag(0), challengeZigzag(1), challengeZigzag(2), challengeZigzag(3)],
+    [challengeCircle(0, false), challengeCircle(1, false), challengeCircle(2, false)],
     [challengeSwoopLR(0), challengeSwoopLR(1), challengeSwoopLR(2), challengeSwoopLR(3)],
     [challengeSwoopRL(0), challengeSwoopRL(1), challengeSwoopRL(2), challengeSwoopRL(3)],
-    [challengeZigzag(0), challengeZigzag(1), challengeZigzag(2), challengeZigzag(3), challengeZigzag(4)],
-    [challengeDiveLoop(0), challengeDiveLoop(1), challengeDiveLoop(2), challengeDiveLoop(3), challengeDiveLoop(4)],
+    [challengeZigzag(0), challengeZigzag(1), challengeZigzag(2), challengeZigzag(3)],
+    [challengeDiveLoop(0), challengeDiveLoop(1), challengeDiveLoop(2), challengeDiveLoop(3)],
   ],
   // Layout 5: Mixed spectacular
   [
-    [challengeFigure8(0), challengeFigure8(1), challengeFigure8(2), challengeFigure8(3)],
-    [challengeVFormation(0), challengeVFormation(1), challengeVFormation(2), challengeVFormation(3), challengeVFormation(4)],
-    [challengeCircle(0, true), challengeCircle(1, true), challengeCircle(2, true), challengeCircle(3, true)],
+    [challengeFigure8(0), challengeFigure8(1), challengeFigure8(2)],
+    [challengeVFormation(0), challengeVFormation(1), challengeVFormation(2), challengeVFormation(3)],
+    [challengeCircle(0, true), challengeCircle(1, true), challengeCircle(2, true)],
     [challengeSwoopLR(0), challengeSwoopLR(1), challengeSwoopLR(2), challengeSwoopLR(3)],
-    [challengeArc(0, true), challengeArc(1, true), challengeArc(2, true), challengeArc(3, true)],
-    [challengeDiveLoop(0), challengeDiveLoop(1), challengeDiveLoop(2), challengeDiveLoop(3), challengeDiveLoop(4)],
-    [challengeCircle(0, false), challengeCircle(1, false), challengeCircle(2, false), challengeCircle(3, false)],
-    [challengeZigzag(0), challengeZigzag(1), challengeZigzag(2), challengeZigzag(3), challengeZigzag(4)],
+    [challengeArc(0, true), challengeArc(1, true), challengeArc(2, true)],
+    [challengeDiveLoop(0), challengeDiveLoop(1), challengeDiveLoop(2), challengeDiveLoop(3)],
+    [challengeCircle(0, false), challengeCircle(1, false), challengeCircle(2, false)],
+    [challengeZigzag(0), challengeZigzag(1), challengeZigzag(2), challengeZigzag(3)],
   ],
 ];

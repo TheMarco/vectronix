@@ -522,6 +522,146 @@ export class SoundEngine {
     osc.stop(t + 0.06);
   }
 
+  // ─── UFO FLYING ───
+  // Continuous warble: two detuned sines creating 6Hz beat frequency
+  // Returns { stop() } handle to kill the sound
+  playUfoFlying() {
+    if (!this._ensureCtx()) return { stop() {} };
+    const t = this.ctx.currentTime;
+
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc1.type = 'sine';
+    osc2.type = 'sine';
+    osc1.frequency.setValueAtTime(300, t);
+    osc2.frequency.setValueAtTime(306, t);
+    gain.gain.setValueAtTime(0.06, t);
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(this.masterGain);
+    osc1.start(t);
+    osc2.start(t);
+
+    return {
+      stop: () => {
+        try {
+          const now = this.ctx.currentTime;
+          gain.gain.setValueAtTime(gain.gain.value, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+          osc1.stop(now + 0.1);
+          osc2.stop(now + 0.1);
+        } catch (e) {}
+      }
+    };
+  }
+
+  // ─── UFO KILL ───
+  // Descending square sweep + noise pop
+  playUfoKill() {
+    if (!this._ensureCtx()) return;
+    const t = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1800, t);
+    osc.frequency.exponentialRampToValueAtTime(200, t + 0.15);
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    osc.connect(gain).connect(this.masterGain);
+    osc.start(t);
+    osc.stop(t + 0.2);
+
+    // Noise pop
+    const bufLen = this.ctx.sampleRate * 0.1;
+    const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buf;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.18, t);
+    ng.gain.linearRampToValueAtTime(0.0, t + 0.1);
+    noise.connect(ng).connect(this.masterGain);
+    noise.start(t);
+    noise.stop(t + 0.1);
+  }
+
+  // ─── TIME FREEZE ───
+  // Deep bass thud + high crystalline shimmer
+  playTimeFreeze() {
+    if (!this._ensureCtx()) return;
+    const t = this.ctx.currentTime;
+
+    // Deep bass thud
+    const sub = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(40, t);
+    sub.frequency.exponentialRampToValueAtTime(20, t + 0.4);
+    subGain.gain.setValueAtTime(0.35, t);
+    subGain.gain.linearRampToValueAtTime(0.0, t + 0.4);
+    sub.connect(subGain).connect(this.masterGain);
+    sub.start(t);
+    sub.stop(t + 0.4);
+
+    // High crystalline shimmer
+    const freqs = [2400, 3200, 4000];
+    freqs.forEach((freq, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.6, t + 0.5);
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.06, t + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+      osc.connect(gain).connect(this.masterGain);
+      osc.start(t);
+      osc.stop(t + 0.5);
+    });
+
+    // Noise burst for impact
+    const bufLen = this.ctx.sampleRate * 0.08;
+    const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buf;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.15, t);
+    ng.gain.linearRampToValueAtTime(0.0, t + 0.08);
+    noise.connect(ng).connect(this.masterGain);
+    noise.start(t);
+    noise.stop(t + 0.08);
+  }
+
+  // ─── POWER UP ───
+  // Quick ascending arpeggio
+  playPowerUp() {
+    if (!this._ensureCtx()) return;
+    const t = this.ctx.currentTime;
+    const notes = [600, 800, 1000, 1200];
+
+    notes.forEach((freq, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'square';
+      const noteT = t + i * 0.05;
+      osc.frequency.setValueAtTime(freq, noteT);
+      gain.gain.setValueAtTime(0.14, noteT);
+      gain.gain.exponentialRampToValueAtTime(0.001, noteT + 0.12);
+      osc.connect(gain).connect(this.masterGain);
+      osc.start(noteT);
+      osc.stop(noteT + 0.12);
+    });
+  }
+
   // ─── TITLE MUSIC ───
   // Simple looping bass pulse
   playTitlePulse() {

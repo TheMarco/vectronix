@@ -22,6 +22,7 @@ export class CollisionSystem {
     this.onCapturedShipHit = null; // (capturedShip) => void
     this.onDualHit = null;      // () => void
     this.onBulletDeflected = null; // (enemy) => void — spinner deflection
+    this.onShieldBreak = null;    // () => void — shield absorbed a hit
   }
 
   update(player, enemies, bulletManager, capturedShips) {
@@ -90,15 +91,16 @@ export class CollisionSystem {
       if (dist < hitDist * hitDist) {
         bullet.alive = false;
         const wasDual = player.dualFighter;
+        const hadShield = player.shieldActive;
         const wasHit = player.kill();
         if (wasHit) {
           if (wasDual) {
-            // Was dual, lost one ship (player still alive)
             if (this.onDualHit) this.onDualHit();
           } else {
-            // Normal death
             if (this.onPlayerHit) this.onPlayerHit();
           }
+        } else if (hadShield && !player.shieldActive) {
+          if (this.onShieldBreak) this.onShieldBreak();
         }
         break;
       }
@@ -106,7 +108,7 @@ export class CollisionSystem {
 
     // Diving enemies → player (body collision) — skip beaming bosses
     for (const enemy of enemies) {
-      if (!enemy.alive || enemy.state === 'holding' || enemy.state === 'queued') continue;
+      if (!enemy.alive || enemy.state === 'holding' || enemy.state === 'queued' || enemy.state === 'entering') continue;
       if (enemy.state === 'tractor_beaming') continue; // beam captures, doesn't body-hit
       const dx = enemy.x - player.x;
       const dy = enemy.y - player.y;
@@ -116,6 +118,7 @@ export class CollisionSystem {
         enemy.kill();
         if (this.onEnemyKilled) this.onEnemyKilled(enemy);
         const wasDual2 = player.dualFighter;
+        const hadShield2 = player.shieldActive;
         const wasHit2 = player.kill();
         if (wasHit2) {
           if (wasDual2) {
@@ -123,6 +126,8 @@ export class CollisionSystem {
           } else {
             if (this.onPlayerHit) this.onPlayerHit();
           }
+        } else if (hadShield2 && !player.shieldActive) {
+          if (this.onShieldBreak) this.onShieldBreak();
         }
         break;
       }
@@ -132,7 +137,8 @@ export class CollisionSystem {
     for (const enemy of enemies) {
       if (!enemy.alive || !enemy.isBeaming) continue;
       const dx = Math.abs(enemy.x - player.x);
-      if (dx < CONFIG.BEAM_CAPTURE_RANGE) {
+      const captureRange = enemy.bossPhase === 2 ? CONFIG.BEAM_CAPTURE_RANGE * 1.1 : CONFIG.BEAM_CAPTURE_RANGE;
+      if (dx < captureRange) {
         // Player is in beam zone
         if (!player.invulnerable && !player.captured) {
           if (this.onBeamCapture) this.onBeamCapture(enemy);

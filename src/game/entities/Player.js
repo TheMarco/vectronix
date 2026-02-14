@@ -15,10 +15,19 @@ export class Player {
     // Dual fighter
     this.dualFighter = false;
     this.captured = false; // true while being captured by beam
+
+    // Shield (UFO power-up)
+    this.shieldActive = false;
   }
 
   kill() {
     if (!this.alive || this.invulnerable) return false;
+
+    // Shield absorbs one hit
+    if (this.shieldActive) {
+      this.shieldActive = false;
+      return false; // absorbed
+    }
 
     // In dual fighter mode: lose one ship instead of dying
     if (this.dualFighter) {
@@ -35,6 +44,12 @@ export class Player {
   /** Called when tractor beam captures player */
   capture() {
     if (!this.alive || this.invulnerable || this.captured) return false;
+
+    // Shield absorbs capture
+    if (this.shieldActive) {
+      this.shieldActive = false;
+      return false;
+    }
     this.captured = true;
     this.alive = false;
     this.lives--;

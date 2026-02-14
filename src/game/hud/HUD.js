@@ -62,6 +62,14 @@ export class HUD {
     }).setDepth(11).setOrigin(0.5, 0.5);
     this._extraLifeTimer = 0;
 
+    // Power-up notification (below top HUD row)
+    this.powerUpText = scene.add.text(CONFIG.CENTER_X, 52, '', {
+      ...style,
+      fontSize: '24px',
+      color: '#ff88ff',
+    }).setDepth(11).setOrigin(0.5, 0);
+    this._powerUpTimer = 0;
+
     // Demo label
     this.demoText = scene.add.text(CONFIG.WIDTH - 15, CONFIG.HEIGHT - 15, '', {
       ...style,
@@ -104,6 +112,17 @@ export class HUD {
         this.challengeHitsText.setText('');
         this.challengeBonusText.setText('');
         this.perfectText.setText('');
+      }
+    }
+
+    // Power-up notification countdown
+    if (this._powerUpTimer > 0) {
+      this._powerUpTimer -= dt;
+      const pulse = Math.sin(this._powerUpTimer * 10) * 0.3 + 0.7;
+      this.powerUpText.setAlpha(pulse);
+      if (this._powerUpTimer <= 0) {
+        this.powerUpText.setText('');
+        this.powerUpText.setAlpha(1);
       }
     }
 
@@ -215,6 +234,11 @@ export class HUD {
   showExtraLife() {
     this.extraLifeText.setText('EXTRA SHIP');
     this._extraLifeTimer = 1.5;
+  }
+
+  showPowerUp(text) {
+    this.powerUpText.setText(text);
+    this._powerUpTimer = 2;
   }
 
   showDemoLabel(show) {

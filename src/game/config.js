@@ -23,7 +23,7 @@ export const CONFIG = Object.freeze({
 
   // Bullets
   MAX_PLAYER_BULLETS: 4,
-  PLAYER_BULLET_SPEED: 500,
+  PLAYER_BULLET_SPEED: 600,
   ENEMY_BULLET_SPEED: 180,
 
   // Formation
@@ -77,6 +77,19 @@ export const CONFIG = Object.freeze({
   CHALLENGE_BONUS_PER_HIT: 100,
   CHALLENGE_PERFECT_BONUS: 10000,
 
+  // UFO bonus ship
+  UFO_SPEED: 130,
+  UFO_SPAWN_MIN: 20000,
+  UFO_SPAWN_MAX: 30000,
+  UFO_SCORE: 300,
+  UFO_HIT_RADIUS: 12,
+  RAPID_FIRE_DURATION: 12000,
+  SLOWDOWN_DURATION: 15000,
+  SLOWDOWN_MULT: 0.5,
+  MAGNET_DURATION: 10000,
+  TIME_FREEZE_DURATION: 3500,
+  MAGNET_STRENGTH: 250,
+
   // Boss / Tractor beam
   BEAM_DURATION: 4500,        // ms beam stays active
   BEAM_CAPTURE_RANGE: 70,     // horizontal px for capture
@@ -107,6 +120,7 @@ export const CONFIG = Object.freeze({
     BOSS: 0xff4488,
     CAPTURED_SHIP: 0x225588,
     TRACTOR_BEAM: 0x44ddff,
+    UFO: 0xff66ff,
     STARFIELD: 0x88bbee,
   },
 
@@ -121,5 +135,6 @@ export const CONFIG = Object.freeze({
     PHANTOM: 0x44ffaa,    // mint eyes/tendrils against purple hood
     SWARM: 0xff66aa,      // pink legs/antennae against lime body
     BOSS: 0x44ddff,       // cyan crown/struts against pink body
+    UFO: 0x66ffff,        // cyan accents against magenta body
   },
 });

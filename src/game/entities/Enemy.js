@@ -69,6 +69,9 @@ export class Enemy {
     this.returnStartZ = 0;
     this.returnT = 0;
 
+    // Boss phase shift
+    this.bossPhase = 1;
+
     // Score
     this.scoreValue = this._getScore(false);
     this.scoreDiving = this._getScore(true);
@@ -89,6 +92,7 @@ export class Enemy {
     if (this.hitFlashTimer > 0) return 0xffffff;
     const key = this.type.toUpperCase();
     const base = CONFIG.COLORS[key] || 0xffffff;
+    if (this.isBoss && this.bossPhase === 2) return this._shiftPhase2(base);
     if (this.damageLevel === 0) return base;
     return this._shiftDamage(base);
   }
@@ -97,8 +101,16 @@ export class Enemy {
     if (this.hitFlashTimer > 0) return 0xffffff;
     const key = this.type.toUpperCase();
     const base = CONFIG.COLORS_2[key] || CONFIG.COLORS[key] || 0xffffff;
+    if (this.isBoss && this.bossPhase === 2) return this._shiftPhase2(base);
     if (this.damageLevel === 0) return base;
     return this._shiftDamage(base);
+  }
+
+  _shiftPhase2(base) {
+    const r = (base >> 16) & 0xff;
+    const g = (base >> 8) & 0xff;
+    const b = base & 0xff;
+    return ((Math.min(255, r + 60) << 16) | (Math.min(255, g + 30) << 8) | (Math.min(255, b + 40))) >>> 0;
   }
 
   _shiftDamage(base) {
@@ -143,6 +155,10 @@ export class Enemy {
   /** Returns true if enemy survived the hit */
   hit() {
     this.hp--;
+    // Boss phase shift on first hit
+    if (this.isBoss && this.hp === 1 && this.bossPhase === 1) {
+      this.bossPhase = 2;
+    }
     if (this.hp <= 0) {
       this.kill();
       return false; // dead

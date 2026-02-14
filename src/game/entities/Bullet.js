@@ -26,6 +26,7 @@ export class Bullet {
 export class BulletManager {
   constructor() {
     this.bullets = [];
+    this.maxBulletsBonus = 0;
   }
 
   get playerBulletCount() {
@@ -35,13 +36,13 @@ export class BulletManager {
   }
 
   firePlayer(x, y) {
-    if (this.playerBulletCount >= 2) return false;
+    if (this.playerBulletCount >= 2 + this.maxBulletsBonus) return false;
     this.bullets.push(new Bullet(x, y - 12, 0, 0, -CONFIG.PLAYER_BULLET_SPEED, true));
     return true;
   }
 
   fireDual(x1, y1, x2, y2) {
-    if (this.playerBulletCount >= 4) return false;
+    if (this.playerBulletCount >= 4 + this.maxBulletsBonus * 2) return false;
     this.bullets.push(new Bullet(x1, y1 - 12, 0, 0, -CONFIG.PLAYER_BULLET_SPEED, true));
     this.bullets.push(new Bullet(x2, y2 - 12, 0, 0, -CONFIG.PLAYER_BULLET_SPEED, true));
     return true;
@@ -66,6 +67,13 @@ export class BulletManager {
     this.bullets.push(new Bullet(x, y, z, Math.cos(angle) * speed, Math.sin(angle) * speed, false));
   }
 
+  fireEnemyAimedPredictive(x, y, z, targetX, targetY, playerVX) {
+    const dy = targetY - y;
+    const timeToReach = Math.abs(dy) / CONFIG.ENEMY_BULLET_SPEED;
+    const predictedX = targetX + playerVX * timeToReach * 0.5;
+    this.fireEnemyAimed(x, y, z, predictedX, targetY);
+  }
+
   fireEnemySpread(x, y, z, count, spreadAngle) {
     const baseAngle = Math.PI / 2; // straight down
     const step = count > 1 ? spreadAngle / (count - 1) : 0;
@@ -81,9 +89,10 @@ export class BulletManager {
     this.bullets.push(new Bullet(x, y, z, 0, CONFIG.ENEMY_BULLET_SPEED * 0.5, false));
   }
 
-  update(dt) {
+  update(dt, enemySpeedMult = 1.0) {
     for (const b of this.bullets) {
-      if (b.alive) b.update(dt);
+      if (!b.alive) continue;
+      b.update(b.isPlayer ? dt : dt * enemySpeedMult);
     }
     this.bullets = this.bullets.filter(b => b.alive);
   }

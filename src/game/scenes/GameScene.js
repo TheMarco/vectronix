@@ -8,7 +8,8 @@ import { CollisionSystem } from '../systems/CollisionSystem.js';
 import { ExplosionRenderer } from '../rendering/ExplosionRenderer.js';
 import { HUD } from '../hud/HUD.js';
 import { projectPoint, projectModel, projectModelFlat, getScale } from '../rendering/Projection.js';
-import { PLAYER_SHIP, ENEMY_MODELS, ENEMY_MODELS_DAMAGED, PLAYER_BULLET, ENEMY_BULLET } from '../rendering/Models.js';
+import { PLAYER_SHIP, ENEMY_MODELS, ENEMY_MODELS_DAMAGED, PLAYER_BULLET, ENEMY_BULLET, UFO_SAUCER } from '../rendering/Models.js';
+import { Ufo } from '../entities/Ufo.js';
 import {
   drawGlowLine,
   drawGlowPolygon,
@@ -50,6 +51,18 @@ export class GameScene extends Phaser.Scene {
     this._nextExtraLifeIndex = 0;
     this.gameOver = false;
     this.gameOverTimer = 0;
+
+    // UFO bonus ship
+    this._ufo = null;
+    this._ufoTimer = CONFIG.UFO_SPAWN_MIN + Math.random() * (CONFIG.UFO_SPAWN_MAX - CONFIG.UFO_SPAWN_MIN);
+    this._ufoSound = null;
+
+    // Power-up timers
+    this._rapidFireTimer = 0;
+    this._slowdownTimer = 0;
+    this._rapidFireCooldown = 0;
+    this._magnetTimer = 0;
+    this._timeFreezeTimer = 0;
 
     // Death freeze (hitstop)
     this._freezeTimer = 0;
@@ -169,6 +182,11 @@ export class GameScene extends Phaser.Scene {
       this.explosionRenderer.spawn(enemy.x, enemy.y - 8, 0xffffff, 3);
       this.soundEngine.playDeflect();
     };
+    this.collisionSystem.onShieldBreak = () => {
+      this.explosionRenderer.spawn(this.player.x, this.player.y, CONFIG.COLORS.GUARDIAN, 8);
+      this.soundEngine.playDeflect();
+      this._shakeAmount = 6;
+    };
 
     // Wire up dive sound
     this.waveSystem.onDive = () => {
@@ -203,8 +221,8 @@ export class GameScene extends Phaser.Scene {
     };
     this.waveSystem.onChallengePerfect = () => {
       this.soundEngine.playChallengePerfect();
-      // Perfect challenge stage awards an extra life
-      this.player.lives++;
+      // Perfect challenge stage awards an extra life (capped at 3)
+      if (this.player.lives < 3) this.player.lives++;
     };
 
     // HUD
@@ -257,16 +275,20 @@ export class GameScene extends Phaser.Scene {
 
     // Intro music (real games only, not demo/attract)
     if (!this._demoMode) {
-      this._introMusic = this.sound.add('intro');
+      this._introMusic = this.sound.add('intro', { volume: 0.3 });
       this._introMusic.play();
     }
 
-    // Stop intro music when scene shuts down
+    // Stop intro music and UFO sound when scene shuts down
     this.events.on('shutdown', () => {
       if (this._introMusic) {
         this._introMusic.stop();
         this._introMusic.destroy();
         this._introMusic = null;
+      }
+      if (this._ufoSound) {
+        this._ufoSound.stop();
+        this._ufoSound = null;
       }
     });
 
@@ -371,27 +393,64 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
-      if (firePressed && this.player.alive && !this.player.invulnerable) {
+      // Rapid fire: allow auto-fire when holding fire key
+      if (this._rapidFireTimer > 0 && this._rapidFireCooldown > 0) {
+        this._rapidFireCooldown -= dt;
+      }
+      const rapidAutoFire = this._rapidFireTimer > 0 && this._rapidFireCooldown <= 0 &&
+        !this._demoMode && (this.fireKey.isDown || this.fireKey2.isDown);
+      const shouldFire = firePressed || rapidAutoFire;
+
+      if (shouldFire && this.player.alive && !this.player.invulnerable) {
         if (this.player.dualFighter) {
           const x1 = this.player.x - CONFIG.DUAL_OFFSET_X;
           const x2 = this.player.x + CONFIG.DUAL_OFFSET_X;
           if (this.bulletManager.fireDual(x1, this.player.y, x2, this.player.y)) {
             this.soundEngine.playFire();
             this._stats.shotsFired += 2;
+            if (this._rapidFireTimer > 0) this._rapidFireCooldown = 0.12;
           }
         } else {
           if (this.bulletManager.firePlayer(this.player.x, this.player.y)) {
             this.soundEngine.playFire();
             this._stats.shotsFired++;
+            if (this._rapidFireTimer > 0) this._rapidFireCooldown = 0.12;
           }
         }
       }
 
-      this.bulletManager.update(dt);
+      // Enemy speed multiplier: time freeze overrides slowdown
+      let enemyMult = 1.0;
+      if (this._timeFreezeTimer > 0) enemyMult = 0;
+      else if (this._slowdownTimer > 0) enemyMult = CONFIG.SLOWDOWN_MULT;
+
+      this.bulletManager.update(dt, enemyMult);
+
+      // Magnet: homing for player bullets
+      if (this._magnetTimer > 0) {
+        for (const b of this.bulletManager.bullets) {
+          if (!b.alive || !b.isPlayer) continue;
+          // Find nearest alive non-queued enemy
+          let nearDist = Infinity;
+          let nearX = 0;
+          for (const e of this.waveSystem.enemies) {
+            if (!e.alive || e.state === 'queued') continue;
+            const dx = e.x - b.x;
+            const dy = e.y - b.y;
+            const d = dx * dx + dy * dy;
+            if (d < nearDist) { nearDist = d; nearX = e.x; }
+          }
+          if (nearDist < Infinity) {
+            const dir = nearX > b.x ? 1 : nearX < b.x ? -1 : 0;
+            b.vx = dir * CONFIG.MAGNET_STRENGTH;
+          }
+        }
+      }
+
       const ov = this.game.registry.get('shaderOverlay');
       this.formation.crtMode = ov && ov.getShaderName() === 'crt';
-      this.formation.update(dt);
-      this.waveSystem.update(dt, this.formation, this.player.x, this.player.y, this.bulletManager, this.player.dualFighter);
+      this.formation.update(dt * enemyMult);
+      this.waveSystem.update(dt * enemyMult, this.formation, this.player.x, this.player.y, this.bulletManager, this.player.dualFighter);
 
       // Check for rescued captured ships → enter dual fighter
       for (const cs of this.waveSystem.capturedShips) {
@@ -420,6 +479,71 @@ export class GameScene extends Phaser.Scene {
         this.collisionSystem.updateChallengeMode(this.waveSystem.enemies, this.bulletManager);
       } else {
         this.collisionSystem.update(this.player, this.waveSystem.enemies, this.bulletManager, this.waveSystem.capturedShips);
+      }
+
+      // ─── UFO SPAWN ───
+      if (!this._ufo && !this.waveSystem.isChallenge && !this.waveSystem.waveComplete) {
+        this._ufoTimer -= dt * 1000;
+        if (this._ufoTimer <= 0) {
+          const fromRight = Math.random() > 0.5;
+          this._ufo = new Ufo(fromRight);
+          this._ufoSound = this.soundEngine.playUfoFlying();
+          this._ufoTimer = CONFIG.UFO_SPAWN_MIN + Math.random() * (CONFIG.UFO_SPAWN_MAX - CONFIG.UFO_SPAWN_MIN);
+        }
+      }
+
+      // ─── UFO UPDATE ───
+      if (this._ufo) {
+        this._ufo.update(dt);
+        if (!this._ufo.alive) {
+          if (this._ufoSound) { this._ufoSound.stop(); this._ufoSound = null; }
+          this._ufo = null;
+        }
+      }
+
+      // ─── UFO COLLISION ───
+      if (this._ufo && this._ufo.alive) {
+        const ufoR = CONFIG.UFO_HIT_RADIUS;
+        for (const b of this.bulletManager.bullets) {
+          if (!b.alive || !b.isPlayer) continue;
+          const dx = b.x - this._ufo.x;
+          const dy = b.y - this._ufo.y;
+          if (dx * dx + dy * dy < (ufoR + 4) * (ufoR + 4)) {
+            b.alive = false;
+            this._ufo.alive = false;
+            if (this._ufoSound) { this._ufoSound.stop(); this._ufoSound = null; }
+            this.explosionRenderer.spawn(this._ufo.x, this._ufo.y, CONFIG.COLORS.UFO, 14);
+            this.soundEngine.playUfoKill();
+            this.score += CONFIG.UFO_SCORE;
+            this._stats.shotsHit++;
+            this._applyUfoBonus();
+            this._ufo = null;
+            break;
+          }
+        }
+      }
+
+      // ─── POWER-UP TIMERS ───
+      if (this._rapidFireTimer > 0) {
+        this._rapidFireTimer -= dt * 1000;
+        if (this._rapidFireTimer <= 0) {
+          this._rapidFireTimer = 0;
+          this.bulletManager.maxBulletsBonus = 0;
+        }
+      }
+      if (this._slowdownTimer > 0) {
+        this._slowdownTimer -= dt * 1000;
+        if (this._slowdownTimer <= 0) {
+          this._slowdownTimer = 0;
+        }
+      }
+      if (this._magnetTimer > 0) {
+        this._magnetTimer -= dt * 1000;
+        if (this._magnetTimer <= 0) this._magnetTimer = 0;
+      }
+      if (this._timeFreezeTimer > 0) {
+        this._timeFreezeTimer -= dt * 1000;
+        if (this._timeFreezeTimer <= 0) this._timeFreezeTimer = 0;
       }
 
       // Extra life check
@@ -479,6 +603,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.explosionRenderer.draw(this.gfx);
+
+    // Shield ring around player
+    if (this.player.shieldActive && this.player.isVisible) {
+      this._drawShieldRing();
+    }
+
+    // Active power-up indicator
+    this._drawPowerUpIndicator();
 
     // Demo mode label
     if (this._demoMode) {
@@ -545,6 +677,16 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
+    // UFO
+    if (this._ufo && this._ufo.alive) {
+      const up = projectPoint(this._ufo.x, this._ufo.y, this._ufo.z);
+      list.push({
+        type: 'ufo',
+        x: this._ufo.x, y: this._ufo.y, z: this._ufo.z,
+        screenX: up.x, screenY: up.y, scale: up.scale, depth: this._ufo.z,
+      });
+    }
+
     for (const bullet of this.bulletManager.bullets) {
       if (!bullet.alive) continue;
       const bp = projectPoint(bullet.x, bullet.y, bullet.z);
@@ -582,6 +724,11 @@ export class GameScene extends Phaser.Scene {
         fillMaskCircle(this.maskGfx, item.screenX, item.screenY, size);
         break;
       }
+      case 'ufo': {
+        const size = 14 * item.scale;
+        fillMaskCircle(this.maskGfx, item.screenX, item.screenY, size);
+        break;
+      }
     }
   }
 
@@ -593,6 +740,7 @@ export class GameScene extends Phaser.Scene {
         if (item.enemy.beamActive) this._drawTractorBeam(item);
         break;
       case 'capturedShip': this._drawCapturedShip(item); break;
+      case 'ufo': this._drawUfo(item); break;
       case 'playerBullet': this._drawPlayerBullet(item); break;
       case 'enemyBullet': this._drawEnemyBullet(item); break;
     }
@@ -688,6 +836,15 @@ export class GameScene extends Phaser.Scene {
         drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
       }
     }
+
+  }
+
+  _drawUfo(item) {
+    const lines = projectModel(UFO_SAUCER, item.x, item.y, item.z, item.scale * 1.6);
+    for (const line of lines) {
+      const col = line.c ? CONFIG.COLORS_2.UFO : CONFIG.COLORS.UFO;
+      drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
+    }
   }
 
   _drawPlayerBullet(item) {
@@ -710,7 +867,7 @@ export class GameScene extends Phaser.Scene {
     const beamHeight = beamBottom - bossY;
     const time = performance.now() * 0.004;
     const topWidth = 10;
-    const bottomWidth = CONFIG.BEAM_CAPTURE_RANGE;
+    const bottomWidth = item.enemy.bossPhase === 2 ? CONFIG.BEAM_CAPTURE_RANGE * 1.1 : CONFIG.BEAM_CAPTURE_RANGE;
     const cyan = 0x44ddff;
     const blue = 0x2244ff;
 
@@ -773,12 +930,96 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.score >= nextThreshold && this._prevScore < nextThreshold) {
-      this.player.lives++;
+      if (this.player.lives < 3) {
+        this.player.lives++;
+        this.soundEngine.playExtraLife();
+        this.hud.showExtraLife();
+      }
       this._nextExtraLifeIndex++;
-      this.soundEngine.playExtraLife();
-      this.hud.showExtraLife();
     }
     this._prevScore = this.score;
+  }
+
+  _drawShieldRing() {
+    const px = this.player.x + this._shakeOffsetX;
+    const py = this.player.y + this._shakeOffsetY;
+    const pulse = Math.sin(performance.now() * 0.006) * 0.15 + 0.35;
+    const radius = 20;
+    const sides = 6;
+    for (let i = 0; i < sides; i++) {
+      const a1 = (i / sides) * Math.PI * 2 - Math.PI / 2;
+      const a2 = ((i + 1) / sides) * Math.PI * 2 - Math.PI / 2;
+      const x1 = px + Math.cos(a1) * radius;
+      const y1 = py + Math.sin(a1) * radius;
+      const x2 = px + Math.cos(a2) * radius;
+      const y2 = py + Math.sin(a2) * radius;
+      drawGlowLine(this.gfx, x1, y1, x2, y2, CONFIG.COLORS.GUARDIAN, false, [
+        { width: 8, alpha: 0.05 * pulse },
+        { width: 4, alpha: 0.15 * pulse },
+        { width: 1.5, alpha: pulse },
+      ]);
+    }
+  }
+
+  _drawPowerUpIndicator() {
+    // Show small text for active power-ups with remaining time
+    const parts = [];
+    if (this._rapidFireTimer > 0) parts.push(`RAPID ${Math.ceil(this._rapidFireTimer / 1000)}s`);
+    if (this._slowdownTimer > 0) parts.push(`SLOW ${Math.ceil(this._slowdownTimer / 1000)}s`);
+    if (this.player.shieldActive) parts.push('SHIELD');
+    if (this._magnetTimer > 0) parts.push(`MAGNET ${Math.ceil(this._magnetTimer / 1000)}s`);
+    if (this._timeFreezeTimer > 0) parts.push(`FREEZE ${Math.ceil(this._timeFreezeTimer / 1000)}s`);
+    if (parts.length > 0) {
+      this.hud.powerUpText.setText(parts.join('  '));
+      if (this.hud._powerUpTimer <= 0) {
+        // Keep showing but at steady alpha (not pulsing — that's for the initial notification)
+        this.hud.powerUpText.setAlpha(0.7);
+      }
+    } else if (this.hud._powerUpTimer <= 0) {
+      this.hud.powerUpText.setText('');
+    }
+  }
+
+  _applyUfoBonus() {
+    const bonuses = ['extraShip', 'rapidFire', 'shield', 'slowdown', 'magnet', 'timeFreeze'];
+    let pick = bonuses[Math.floor(Math.random() * bonuses.length)];
+    // Re-roll extraShip if lives already at 3
+    if (pick === 'extraShip' && this.player.lives >= 3) {
+      const alt = bonuses.filter(b => b !== 'extraShip');
+      pick = alt[Math.floor(Math.random() * alt.length)];
+    }
+
+    this.soundEngine.playPowerUp();
+
+    switch (pick) {
+      case 'extraShip':
+        this.player.lives++;
+        this.hud.showPowerUp('EXTRA SHIP');
+        break;
+      case 'rapidFire':
+        this._rapidFireTimer = CONFIG.RAPID_FIRE_DURATION;
+        this._rapidFireCooldown = 0;
+        this.bulletManager.maxBulletsBonus = 1;
+        this.hud.showPowerUp('RAPID FIRE');
+        break;
+      case 'shield':
+        this.player.shieldActive = true;
+        this.hud.showPowerUp('SHIELD');
+        break;
+      case 'slowdown':
+        this._slowdownTimer = CONFIG.SLOWDOWN_DURATION;
+        this.hud.showPowerUp('SLOWDOWN');
+        break;
+      case 'magnet':
+        this._magnetTimer = CONFIG.MAGNET_DURATION;
+        this.hud.showPowerUp('MAGNET');
+        break;
+      case 'timeFreeze':
+        this._timeFreezeTimer = CONFIG.TIME_FREEZE_DURATION;
+        this.soundEngine.playTimeFreeze();
+        this.hud.showPowerUp('TIME FREEZE');
+        break;
+    }
   }
 
   _drawStarfield() {

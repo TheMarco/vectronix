@@ -299,6 +299,32 @@ export const BOSS_GALAGA = [
   { from: [0, -8, -2], to: [0, 2, -1.5] },
 ];
 
+// ─── UFO SAUCER ───
+// Flat flying saucer: wide disc with low bubble canopy, accent windows, bottom glow.
+export const UFO_SAUCER = [
+  // Wide disc body
+  { from: [-16, 0, 0], to: [-12, -2, -0.3] },
+  { from: [-12, -2, -0.3], to: [-5, -3, -0.5] },
+  { from: [-5, -3, -0.5], to: [5, -3, -0.5] },
+  { from: [5, -3, -0.5], to: [12, -2, -0.3] },
+  { from: [12, -2, -0.3], to: [16, 0, 0] },
+  { from: [16, 0, 0], to: [12, 2, 0.3] },
+  { from: [12, 2, 0.3], to: [-12, 2, 0.3] },
+  { from: [-12, 2, 0.3], to: [-16, 0, 0] },
+  // Low bubble canopy
+  { from: [-5, -3, -0.5], to: [-3, -5, -0.8] },
+  { from: [-3, -5, -0.8], to: [3, -5, -0.8] },
+  { from: [3, -5, -0.8], to: [5, -3, -0.5] },
+  // Windows (accent color)
+  { from: [-9, -1, 0], to: [-6, -1, 0], c: 1 },
+  { from: [-2, -1, 0], to: [2, -1, 0], c: 1 },
+  { from: [6, -1, 0], to: [9, -1, 0], c: 1 },
+  // Bottom glow line (accent color)
+  { from: [-12, 2, 0.3], to: [-6, 3.5, 0.6], c: 1 },
+  { from: [-6, 3.5, 0.6], to: [6, 3.5, 0.6], c: 1 },
+  { from: [6, 3.5, 0.6], to: [12, 2, 0.3], c: 1 },
+];
+
 // ─── PLAYER BULLET ───
 // Simple upward line segment
 export const PLAYER_BULLET = [
