@@ -257,6 +257,7 @@ export class GameScene extends Phaser.Scene {
 
     // Parallax scrolling starfield (3 layers)
     this._stars = [];
+    const starColors = [0x88bbee, 0x88bbee, 0xaaccff, 0xddeeff, 0xffccaa, 0xffaa88, 0xaaddff];
     const starLayers = [
       { count: 40, speed: 22, brightnessMin: 0.25, brightnessMax: 0.45, sizeMin: 0.5, sizeMax: 0.8 },
       { count: 30, speed: 48, brightnessMin: 0.40, brightnessMax: 0.65, sizeMin: 0.7, sizeMax: 1.1 },
@@ -270,13 +271,14 @@ export class GameScene extends Phaser.Scene {
           speed: layer.speed,
           brightness: layer.brightnessMin + Math.random() * (layer.brightnessMax - layer.brightnessMin),
           size: layer.sizeMin + Math.random() * (layer.sizeMax - layer.sizeMin),
+          color: starColors[Math.floor(Math.random() * starColors.length)],
         });
       }
     }
 
     // Intro music (real games only, not demo/attract)
     if (!this._demoMode) {
-      this._introMusic = this.sound.add('intro', { volume: 0.3 });
+      this._introMusic = this.sound.add('intro', { volume: 0.12 });
       this._introMusic.play();
     }
 
@@ -309,6 +311,7 @@ export class GameScene extends Phaser.Scene {
       const anyKeyDown = this.input.keyboard.keys.some(k => k && k.isDown);
       if (anyKeyDown || this._demoTimer >= this._demoMaxTime ||
           (this.gameOver && this.gameOverTimer > 2)) {
+        console.log(`[GAME] demo exit → TitleScene (anyKey=${anyKeyDown}, timer=${this._demoTimer.toFixed(1)}, gameOver=${this.gameOver})`);
         this.scene.start('TitleScene');
         return;
       }
@@ -959,20 +962,20 @@ export class GameScene extends Phaser.Scene {
   _drawShieldRing() {
     const px = this.player.x + this._shakeOffsetX;
     const py = this.player.y + this._shakeOffsetY;
-    const pulse = Math.sin(performance.now() * 0.006) * 0.15 + 0.35;
-    const radius = 20;
-    const sides = 6;
-    for (let i = 0; i < sides; i++) {
-      const a1 = (i / sides) * Math.PI * 2 - Math.PI / 2;
-      const a2 = ((i + 1) / sides) * Math.PI * 2 - Math.PI / 2;
+    const pulse = Math.sin(performance.now() * 0.004) * 0.35 + 0.65;
+    const radius = 36;
+    const segments = 12;
+    for (let i = 0; i < segments; i++) {
+      const a1 = Math.PI + (i / segments) * Math.PI;
+      const a2 = Math.PI + ((i + 1) / segments) * Math.PI;
       const x1 = px + Math.cos(a1) * radius;
       const y1 = py + Math.sin(a1) * radius;
       const x2 = px + Math.cos(a2) * radius;
       const y2 = py + Math.sin(a2) * radius;
-      drawGlowLine(this.gfx, x1, y1, x2, y2, CONFIG.COLORS.GUARDIAN, false, [
-        { width: 8, alpha: 0.05 * pulse },
-        { width: 4, alpha: 0.15 * pulse },
-        { width: 1.5, alpha: pulse },
+      drawGlowLine(this.gfx, x1, y1, x2, y2, CONFIG.COLORS.TRACTOR_BEAM, false, [
+        { width: 10, alpha: 0.06 * pulse },
+        { width: 5, alpha: 0.18 * pulse },
+        { width: 2, alpha: pulse },
       ]);
     }
   }
@@ -1041,7 +1044,7 @@ export class GameScene extends Phaser.Scene {
   _drawStarfield() {
     for (const star of this._stars) {
       const streakLen = star.speed * 0.08;
-      this.bgGfx.lineStyle(star.size, CONFIG.COLORS.STARFIELD, star.brightness);
+      this.bgGfx.lineStyle(star.size, star.color, star.brightness);
       this.bgGfx.beginPath();
       this.bgGfx.moveTo(star.x, star.y);
       this.bgGfx.lineTo(star.x, star.y + streakLen);

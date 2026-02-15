@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
-import { drawGlowLine, drawGlowCircle, drawGlowDiamond } from '../rendering/GlowRenderer.js';
+import { drawGlowLine } from '../rendering/GlowRenderer.js';
 import { vectorText, vectorTextWidth } from '../rendering/VectorFont.js';
 import { projectPoint, projectModelFlat } from '../rendering/Projection.js';
 import { GRUNT, ATTACKER, COMMANDER, SPINNER, BOMBER, GUARDIAN, PHANTOM, PLAYER_SHIP } from '../rendering/Models.js';
@@ -37,16 +37,35 @@ export class TitleScene extends Phaser.Scene {
     this.bgGfx.setBlendMode(Phaser.BlendModes.ADD);
     this.bgGfx.setDepth(-1);
 
-    this.startKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
-    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    this.startKey.reset();
-    this.spaceKey.reset();
-
     this._time = 0;
     this._started = false;
     this._idleTimer = 0;
     this._demoLaunched = false;
-    this._inputCooldown = 0.3; // prevent carry-over from demo exit keypress
+    this._startPending = false;
+    this._anyKeyPending = false;
+
+    console.log('[TITLE] create() called');
+
+    // Remove stale listener from previous create() cycle (defensive)
+    if (this._onKeyDown) {
+      console.log('[TITLE] removing stale keydown listener');
+      window.removeEventListener('keydown', this._onKeyDown);
+    }
+
+    // Raw DOM keydown — sets flags consumed by update loop
+    this._onKeyDown = (e) => {
+      console.log(`[TITLE] keydown: ${e.code}, _started=${this._started}, _time=${this._time.toFixed(2)}`);
+      this._anyKeyPending = true;
+      if (e.code === 'Space' || e.code === 'Enter') {
+        this._startPending = true;
+        console.log('[TITLE] _startPending = true');
+      }
+    };
+    window.addEventListener('keydown', this._onKeyDown);
+    this.events.once('shutdown', () => {
+      console.log('[TITLE] shutdown — removing keydown listener');
+      window.removeEventListener('keydown', this._onKeyDown);
+    });
 
     // Logo image — source is 2752px wide, fit to ~500px display width
     this._logo = this.add.image(CX, 155, 'logo');
@@ -67,21 +86,26 @@ export class TitleScene extends Phaser.Scene {
       { model: GUARDIAN, color: CONFIG.COLORS.GUARDIAN, color2: CONFIG.COLORS_2.GUARDIAN, angle: 3.8, radius: 240, speed: -0.3, y: 380 },
     ];
 
-    // Starfield (scrolling)
+    // Parallax scrolling starfield (3 layers, same as GameScene)
     this._stars = [];
-    for (let i = 0; i < 120; i++) {
-      this._stars.push({
-        x: Math.random() * CONFIG.WIDTH,
-        y: Math.random() * CONFIG.HEIGHT,
-        speed: 15 + Math.random() * 40,
-        brightness: 0.1 + Math.random() * 0.4,
-        size: 0.5 + Math.random() * 1.0,
-      });
+    const starColors = [0x88bbee, 0x88bbee, 0xaaccff, 0xddeeff, 0xffccaa, 0xffaa88, 0xaaddff];
+    const starLayers = [
+      { count: 40, speed: 22, brightnessMin: 0.25, brightnessMax: 0.45, sizeMin: 0.5, sizeMax: 0.8 },
+      { count: 30, speed: 48, brightnessMin: 0.40, brightnessMax: 0.65, sizeMin: 0.7, sizeMax: 1.1 },
+      { count: 15, speed: 85, brightnessMin: 0.55, brightnessMax: 0.85, sizeMin: 1.0, sizeMax: 1.5 },
+    ];
+    for (const layer of starLayers) {
+      for (let i = 0; i < layer.count; i++) {
+        this._stars.push({
+          x: CONFIG.FIELD_LEFT + Math.random() * (CONFIG.FIELD_RIGHT - CONFIG.FIELD_LEFT),
+          y: CONFIG.FIELD_TOP + Math.random() * (CONFIG.FIELD_BOTTOM - CONFIG.FIELD_TOP),
+          speed: layer.speed,
+          brightness: layer.brightnessMin + Math.random() * (layer.brightnessMax - layer.brightnessMin),
+          size: layer.sizeMin + Math.random() * (layer.sizeMax - layer.sizeMin),
+          color: starColors[Math.floor(Math.random() * starColors.length)],
+        });
+      }
     }
-
-    // Expanding rings
-    this._rings = [];
-    this._ringTimer = 0;
 
     // Bass pulse timer
     this._pulseTimer = 0;
@@ -106,28 +130,28 @@ export class TitleScene extends Phaser.Scene {
       this.soundEngine.playTitlePulse();
     }
 
-    // Input cooldown (prevents carry-over from demo exit)
-    if (this._inputCooldown > 0) {
-      this._inputCooldown -= dt;
-      // Drain any stale JustDown states during cooldown
-      Phaser.Input.Keyboard.JustDown(this.startKey);
-      Phaser.Input.Keyboard.JustDown(this.spaceKey);
-    }
-
-    // Any key press resets idle timer
-    if (!this._started && this.input.keyboard.keys.some(k => k && k.isDown)) {
+    // Consume DOM key flags
+    if (this._anyKeyPending) {
       this._idleTimer = 0;
+      this._anyKeyPending = false;
     }
 
-    // Start game
-    if (!this._started && this._inputCooldown <= 0 &&
-        (Phaser.Input.Keyboard.JustDown(this.startKey) ||
-         Phaser.Input.Keyboard.JustDown(this.spaceKey))) {
+    // Ignore first 0.3s of input (carry-over from demo exit keypress)
+    if (this._time < 0.3) {
+      if (this._startPending) {
+        console.log(`[TITLE] discarding startPending during cooldown (_time=${this._time.toFixed(3)})`);
+      }
+      this._startPending = false;
+    }
+
+    // Start game on Space/Enter
+    if (!this._started && this._startPending) {
+      this._startPending = false;
       this._started = true;
+      console.log('[TITLE] >>> STARTING GAME <<<');
       if (this.soundEngine) this.soundEngine.playSelect();
-      this.time.delayedCall(300, () => {
-        this.scene.start('GameScene');
-      });
+      this.scene.start('GameScene', { demo: false });
+      return;
     }
 
     // Attract mode: launch demo after 8 seconds idle (only after title fully revealed)
@@ -135,24 +159,18 @@ export class TitleScene extends Phaser.Scene {
       this._idleTimer += dt;
       if (this._idleTimer >= 8) {
         this._demoLaunched = true;
+        console.log('[TITLE] >>> LAUNCHING ATTRACT MODE <<<');
         this.scene.start('GameScene', { demo: true });
         return;
       }
     }
 
-    // Spawn expanding rings periodically
-    this._ringTimer += dt;
-    if (this._ringTimer > 1.5) {
-      this._ringTimer = 0;
-      this._rings.push({ radius: 10, alpha: 0.5 });
-    }
-
     // Update scrolling stars
     for (const star of this._stars) {
       star.y += star.speed * dt;
-      if (star.y > CONFIG.HEIGHT) {
-        star.y = -2;
-        star.x = Math.random() * CONFIG.WIDTH;
+      if (star.y > CONFIG.FIELD_BOTTOM) {
+        star.y = CONFIG.FIELD_TOP;
+        star.x = CONFIG.FIELD_LEFT + Math.random() * (CONFIG.FIELD_RIGHT - CONFIG.FIELD_LEFT);
       }
     }
 
@@ -165,25 +183,14 @@ export class TitleScene extends Phaser.Scene {
     this.gfx.clear();
     this.bgGfx.clear();
 
-    // Starfield
+    // Starfield (parallax streaks, same as GameScene)
     for (const star of this._stars) {
-      this.bgGfx.lineStyle(star.size, CONFIG.COLORS.STARFIELD, star.brightness);
+      const streakLen = star.speed * 0.08;
+      this.bgGfx.lineStyle(star.size, star.color, star.brightness);
       this.bgGfx.beginPath();
       this.bgGfx.moveTo(star.x, star.y);
-      this.bgGfx.lineTo(star.x, star.y + star.speed * 0.04);
+      this.bgGfx.lineTo(star.x, star.y + streakLen);
       this.bgGfx.strokePath();
-    }
-
-    // Expanding rings (behind title)
-    for (let i = this._rings.length - 1; i >= 0; i--) {
-      const ring = this._rings[i];
-      ring.radius += 80 * dt;
-      ring.alpha -= 0.3 * dt;
-      if (ring.alpha <= 0) {
-        this._rings.splice(i, 1);
-        continue;
-      }
-      drawGlowCircle(this.bgGfx, CX, 200, ring.radius, 0x223366, 24);
     }
 
     // Geometric background decoration — hexagonal grid pulse
@@ -276,9 +283,9 @@ export class TitleScene extends Phaser.Scene {
         }
       }
 
-      // Score display (between logo and VECTOR ARCADE)
+      // Score display
       if (this._highScore > 0) {
-        const hiText = 'HI ' + this._highScore;
+        const hiText = 'HIGH SCORE ' + this._highScore;
         const hiScale = 3;
         const hiW = vectorTextWidth(hiText, hiScale, 1);
         const hiLines = vectorText(hiText, CX - hiW / 2, 240, hiScale, 1);
@@ -297,17 +304,6 @@ export class TitleScene extends Phaser.Scene {
       }
     }
 
-    // ─── CREDITS ───
-    if (this._time > 3.0) {
-      const credAlpha = Math.min(1, (this._time - 3.0) * 1.5);
-      const credText = 'VECTOR ARCADE';
-      const credScale = 2.5;
-      const credW = vectorTextWidth(credText, credScale, 1);
-      const credLines = vectorText(credText, CX - credW / 2, 300, credScale, 1);
-      for (const line of credLines) {
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x7799bb);
-      }
-    }
   }
 
 }

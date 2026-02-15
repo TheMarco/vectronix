@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { projectPoint } from '../rendering/Projection.js';
 
 /**
  * Collision detection between:
@@ -6,12 +7,20 @@ import { CONFIG } from '../config.js';
  * - Enemy bullets → Player
  * - Diving enemies → Player (body collision)
  *
- * Uses simple circle-based collision (screen space).
+ * All checks use screen-space positions (projected from world z)
+ * so collisions match what the player sees on screen.
  */
 
 const ENEMY_HIT_RADIUS = 10;
 const PLAYER_HIT_RADIUS = 10;
 const BULLET_HIT_RADIUS = 4;
+
+/** Project world coords to screen x/y for collision testing */
+function screenXY(wx, wy, wz) {
+  if (wz === 0) return { x: wx, y: wy };
+  const p = projectPoint(wx, wy, wz);
+  return { x: p.x, y: p.y };
+}
 
 export class CollisionSystem {
   constructor() {
@@ -31,14 +40,16 @@ export class CollisionSystem {
     const playerBullets = bulletManager.bullets.filter(b => b.alive && b.isPlayer);
     const enemyBullets = bulletManager.bullets.filter(b => b.alive && !b.isPlayer);
 
-    // Player bullets → enemies
+    // Player bullets → enemies (both projected to screen space)
     for (const bullet of playerBullets) {
+      const bs = screenXY(bullet.x, bullet.y, bullet.z);
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
         // Phantom: bullets pass through when invisible
         if (!enemy.isTargetable) continue;
-        const dx = bullet.x - enemy.x;
-        const dy = bullet.y - enemy.y;
+        const es = screenXY(enemy.x, enemy.y, enemy.z);
+        const dx = bs.x - es.x;
+        const dy = bs.y - es.y;
         const dist = dx * dx + dy * dy;
         const hitDist = (BULLET_HIT_RADIUS + ENEMY_HIT_RADIUS);
         if (dist < hitDist * hitDist) {
@@ -60,14 +71,16 @@ export class CollisionSystem {
       }
     }
 
-    // Player bullets → captured ships (can accidentally destroy them)
+    // Player bullets → captured ships (both projected to screen space)
     if (capturedShips) {
       for (const bullet of playerBullets) {
         if (!bullet.alive) continue;
+        const bs = screenXY(bullet.x, bullet.y, bullet.z);
         for (const cs of capturedShips) {
           if (!cs.alive || cs.state !== 'attached') continue;
-          const dx = bullet.x - cs.x;
-          const dy = bullet.y - cs.y;
+          const css = screenXY(cs.x, cs.y, cs.z || 0);
+          const dx = bs.x - css.x;
+          const dy = bs.y - css.y;
           const dist = dx * dx + dy * dy;
           const hitDist = (BULLET_HIT_RADIUS + PLAYER_HIT_RADIUS);
           if (dist < hitDist * hitDist) {
@@ -82,10 +95,12 @@ export class CollisionSystem {
       }
     }
 
-    // Enemy bullets → player
+    // Enemy bullets → player (both projected to screen space)
+    const ps = screenXY(player.x, player.y, player.z || 0);
     for (const bullet of enemyBullets) {
-      const dx = bullet.x - player.x;
-      const dy = bullet.y - player.y;
+      const bs = screenXY(bullet.x, bullet.y, bullet.z);
+      const dx = bs.x - ps.x;
+      const dy = bs.y - ps.y;
       const dist = dx * dx + dy * dy;
       const hitDist = (BULLET_HIT_RADIUS + PLAYER_HIT_RADIUS);
       if (dist < hitDist * hitDist) {
@@ -106,12 +121,13 @@ export class CollisionSystem {
       }
     }
 
-    // Diving enemies → player (body collision) — skip beaming bosses
+    // Diving enemies → player (body collision, screen space) — skip beaming bosses
     for (const enemy of enemies) {
       if (!enemy.alive || enemy.state === 'holding' || enemy.state === 'queued' || enemy.state === 'entering') continue;
       if (enemy.state === 'tractor_beaming') continue; // beam captures, doesn't body-hit
-      const dx = enemy.x - player.x;
-      const dy = enemy.y - player.y;
+      const es = screenXY(enemy.x, enemy.y, enemy.z);
+      const dx = es.x - ps.x;
+      const dy = es.y - ps.y;
       const dist = dx * dx + dy * dy;
       const hitDist = (ENEMY_HIT_RADIUS + PLAYER_HIT_RADIUS);
       if (dist < hitDist * hitDist) {
@@ -133,10 +149,11 @@ export class CollisionSystem {
       }
     }
 
-    // Tractor beam capture zone check
+    // Tractor beam capture zone check (screen space)
     for (const enemy of enemies) {
       if (!enemy.alive || !enemy.isBeaming) continue;
-      const dx = Math.abs(enemy.x - player.x);
+      const es = screenXY(enemy.x, enemy.y, enemy.z);
+      const dx = Math.abs(es.x - ps.x);
       const captureRange = enemy.bossPhase === 2 ? CONFIG.BEAM_CAPTURE_RANGE * 1.1 : CONFIG.BEAM_CAPTURE_RANGE;
       if (dx < captureRange) {
         // Player is in beam zone
@@ -155,11 +172,13 @@ export class CollisionSystem {
     const playerBullets = bulletManager.bullets.filter(b => b.alive && b.isPlayer);
 
     for (const bullet of playerBullets) {
+      const bs = screenXY(bullet.x, bullet.y, bullet.z);
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
         if (!enemy.isTargetable) continue;
-        const dx = bullet.x - enemy.x;
-        const dy = bullet.y - enemy.y;
+        const es = screenXY(enemy.x, enemy.y, enemy.z);
+        const dx = bs.x - es.x;
+        const dy = bs.y - es.y;
         const dist = dx * dx + dy * dy;
         const hitDist = (BULLET_HIT_RADIUS + ENEMY_HIT_RADIUS);
         if (dist < hitDist * hitDist) {

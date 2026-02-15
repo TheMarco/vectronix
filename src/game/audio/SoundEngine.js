@@ -121,7 +121,7 @@ export class SoundEngine {
     const t = this.ctx.currentTime;
 
     // First noise burst — immediate hit
-    const bufLen = this.ctx.sampleRate * 0.2;
+    const bufLen = this.ctx.sampleRate * 0.4;
     const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < bufLen; i++) {
@@ -130,45 +130,45 @@ export class SoundEngine {
     const noise1 = this.ctx.createBufferSource();
     noise1.buffer = buf;
     const ng1 = this.ctx.createGain();
-    ng1.gain.setValueAtTime(0.3, t);
-    ng1.gain.linearRampToValueAtTime(0.0, t + 0.2);
+    ng1.gain.setValueAtTime(0.5, t);
+    ng1.gain.linearRampToValueAtTime(0.0, t + 0.4);
     noise1.connect(ng1).connect(this.masterGain);
     noise1.start(t);
-    noise1.stop(t + 0.2);
+    noise1.stop(t + 0.4);
 
     // Second noise burst — staggered for 8-bit "crunch"
     const noise2 = this.ctx.createBufferSource();
     noise2.buffer = buf;
     const ng2 = this.ctx.createGain();
-    ng2.gain.setValueAtTime(0.25, t + 0.08);
-    ng2.gain.linearRampToValueAtTime(0.0, t + 0.3);
+    ng2.gain.setValueAtTime(0.4, t + 0.08);
+    ng2.gain.linearRampToValueAtTime(0.0, t + 0.5);
     noise2.connect(ng2).connect(this.masterGain);
     noise2.start(t + 0.08);
-    noise2.stop(t + 0.3);
+    noise2.stop(t + 0.5);
 
     // Deep descending square wave
     const osc = this.ctx.createOscillator();
     const oscGain = this.ctx.createGain();
     osc.type = 'square';
     osc.frequency.setValueAtTime(400, t);
-    osc.frequency.exponentialRampToValueAtTime(30, t + 0.3);
-    oscGain.gain.setValueAtTime(0.25, t);
-    oscGain.gain.linearRampToValueAtTime(0.0, t + 0.3);
+    osc.frequency.exponentialRampToValueAtTime(25, t + 0.5);
+    oscGain.gain.setValueAtTime(0.4, t);
+    oscGain.gain.linearRampToValueAtTime(0.0, t + 0.5);
     osc.connect(oscGain).connect(this.masterGain);
     osc.start(t);
-    osc.stop(t + 0.3);
+    osc.stop(t + 0.5);
 
     // Second square hit — slightly delayed, lower
     const osc2 = this.ctx.createOscillator();
     const og2 = this.ctx.createGain();
     osc2.type = 'square';
     osc2.frequency.setValueAtTime(200, t + 0.1);
-    osc2.frequency.exponentialRampToValueAtTime(20, t + 0.35);
-    og2.gain.setValueAtTime(0.2, t + 0.1);
-    og2.gain.linearRampToValueAtTime(0.0, t + 0.35);
+    osc2.frequency.exponentialRampToValueAtTime(15, t + 0.6);
+    og2.gain.setValueAtTime(0.35, t + 0.1);
+    og2.gain.linearRampToValueAtTime(0.0, t + 0.6);
     osc2.connect(og2).connect(this.masterGain);
     osc2.start(t + 0.1);
-    osc2.stop(t + 0.35);
+    osc2.stop(t + 0.6);
   }
 
   // ─── ENEMY BULLET ───
