@@ -219,7 +219,7 @@ export class Enemy {
 
     // Spinner rotation
     if (this.type === 'spinner') {
-      this.spinAngle += dt * 3.0;
+      this.spinAngle -= dt * 3.0;
     }
 
     // Phantom flicker timer
@@ -235,17 +235,24 @@ export class Enemy {
       case 'entering': {
         this.entranceT += dt * this.entranceSpeed;
         if (this.entranceT >= 1) {
-          // Keep last path position (for challenge enemies that don't have formation slots)
-          const endP = this.entrancePath(1);
           this.state = 'holding';
-          this.x = formationX || endP.x;
-          this.y = formationY || endP.y;
-          this.z = formationZ || endP.z || 0;
+          this.x = formationX;
+          this.y = formationY;
+          this.z = formationZ;
         } else {
           const p = this.entrancePath(this.entranceT);
-          this.x = p.x;
-          this.y = p.y;
-          this.z = p.z || 0;
+          // Blend toward live formation position in last 15% to avoid snap
+          if (this.entranceT > 0.85 && formationX != null) {
+            const blend = (this.entranceT - 0.85) / 0.15;
+            const ease = blend * blend * (3 - 2 * blend);
+            this.x = p.x + (formationX - p.x) * ease;
+            this.y = p.y + (formationY - p.y) * ease;
+            this.z = (p.z || 0) + (formationZ - (p.z || 0)) * ease;
+          } else {
+            this.x = p.x;
+            this.y = p.y;
+            this.z = p.z || 0;
+          }
         }
         break;
       }

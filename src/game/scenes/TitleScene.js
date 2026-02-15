@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
 import { drawGlowLine, drawGlowCircle, drawGlowDiamond } from '../rendering/GlowRenderer.js';
 import { vectorText, vectorTextWidth } from '../rendering/VectorFont.js';
-import { projectModel } from '../rendering/Projection.js';
+import { projectPoint, projectModelFlat } from '../rendering/Projection.js';
 import { GRUNT, ATTACKER, COMMANDER, SPINNER, BOMBER, GUARDIAN, PHANTOM, PLAYER_SHIP } from '../rendering/Models.js';
 
 const CX = CONFIG.CENTER_X;
@@ -215,7 +215,8 @@ export class TitleScene extends Phaser.Scene {
       const oz = Math.sin(o.angle) * 15;
       const rotation = o.spin ? this._time * 3.0 : o.angle * 0.5;
 
-      const lines = projectModel(o.model, ox, oy, oz, 1.4, rotation);
+      const op = projectPoint(ox, oy, oz);
+      const lines = projectModelFlat(o.model, op.x, op.y, op.scale * 1.4, rotation);
       for (const line of lines) {
         const col = line.c ? o.color2 : o.color;
         drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
@@ -226,14 +227,21 @@ export class TitleScene extends Phaser.Scene {
     if (this._time > 2.5) {
       const shipAlpha = Math.min(1, (this._time - 2.5) * 2);
       const shipY = 500;
-      const lines = projectModel(PLAYER_SHIP, CX, shipY, 0, 1.6);
+      const shipScale = 1.6;
+      const lines = projectModelFlat(PLAYER_SHIP, CX, shipY, shipScale);
       for (const line of lines) {
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, CONFIG.COLORS.PLAYER);
+        const col = line.c ? CONFIG.COLORS.PLAYER_COCKPIT : CONFIG.COLORS.PLAYER;
+        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
       }
-      // Thrust
+      // Dual nacelle thrust
       const flicker = Math.sin(this._time * 12) * 0.3 + 0.7;
-      drawGlowLine(this.gfx, CX - 3, shipY + 12, CX, shipY + 12 + 8 * flicker, CONFIG.COLORS.PLAYER_THRUST);
-      drawGlowLine(this.gfx, CX + 3, shipY + 12, CX, shipY + 12 + 8 * flicker, CONFIG.COLORS.PLAYER_THRUST);
+      const nacX = 5.5 * shipScale;
+      const engY = shipY + 9 * shipScale;
+      const tLen = 8 * flicker;
+      drawGlowLine(this.gfx, CX - nacX - 1, engY, CX - nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
+      drawGlowLine(this.gfx, CX - nacX + 1, engY, CX - nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
+      drawGlowLine(this.gfx, CX + nacX - 1, engY, CX + nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
+      drawGlowLine(this.gfx, CX + nacX + 1, engY, CX + nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
     }
 
     // ─── SUB-TEXT ───

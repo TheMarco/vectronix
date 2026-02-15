@@ -8,7 +8,8 @@ import { CollisionSystem } from '../systems/CollisionSystem.js';
 import { ExplosionRenderer } from '../rendering/ExplosionRenderer.js';
 import { HUD } from '../hud/HUD.js';
 import { projectPoint, projectModel, projectModelFlat, getScale } from '../rendering/Projection.js';
-import { PLAYER_SHIP, ENEMY_MODELS, ENEMY_MODELS_DAMAGED, PLAYER_BULLET, ENEMY_BULLET, UFO_SAUCER } from '../rendering/Models.js';
+import { PLAYER_SHIP, ENEMY_MODELS, PLAYER_BULLET, ENEMY_BULLET, UFO_SAUCER } from '../rendering/Models.js';
+import { applyHoloGlitch } from '../rendering/HoloGlitch.js';
 import { Ufo } from '../entities/Ufo.js';
 import {
   drawGlowLine,
@@ -747,36 +748,40 @@ export class GameScene extends Phaser.Scene {
   }
 
   _drawPlayerShip(item) {
-    const lines = projectModel(PLAYER_SHIP, item.x, item.y, item.z, item.scale * 1.3);
+    const lines = projectModelFlat(PLAYER_SHIP, item.screenX, item.screenY, item.scale * 1.9);
     for (const line of lines) {
-      drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, CONFIG.COLORS.PLAYER);
+      const col = line.c ? CONFIG.COLORS.PLAYER_COCKPIT : CONFIG.COLORS.PLAYER;
+      drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
     }
 
+    // Dual nacelle thrust (nacelle centers at ±5.5 model units, bottom at y=9)
+    const s = item.scale * 1.9;
     const flicker = Math.sin(performance.now() * 0.02) * 0.3 + 0.7;
     const thrustLen = 6 * item.scale * flicker;
-    const engineY = item.screenY + 9 * item.scale;
+    const engineY = item.screenY + 9 * s;
+    const nacX = 5.5 * s;
     drawGlowLine(this.gfx,
-      item.screenX - 2 * item.scale, engineY,
-      item.screenX, engineY + thrustLen,
+      item.screenX - nacX - 0.8 * s, engineY,
+      item.screenX - nacX, engineY + thrustLen,
       CONFIG.COLORS.PLAYER_THRUST);
     drawGlowLine(this.gfx,
-      item.screenX + 2 * item.scale, engineY,
-      item.screenX, engineY + thrustLen,
+      item.screenX - nacX + 0.8 * s, engineY,
+      item.screenX - nacX, engineY + thrustLen,
+      CONFIG.COLORS.PLAYER_THRUST);
+    drawGlowLine(this.gfx,
+      item.screenX + nacX - 0.8 * s, engineY,
+      item.screenX + nacX, engineY + thrustLen,
+      CONFIG.COLORS.PLAYER_THRUST);
+    drawGlowLine(this.gfx,
+      item.screenX + nacX + 0.8 * s, engineY,
+      item.screenX + nacX, engineY + thrustLen,
       CONFIG.COLORS.PLAYER_THRUST);
   }
 
   _drawEnemy(item) {
     const { enemy } = item;
 
-    // Select model: use damaged variant if available
-    let model = ENEMY_MODELS[enemy.type];
-    if (enemy.damageLevel > 0) {
-      const damaged = ENEMY_MODELS_DAMAGED[enemy.type];
-      if (damaged) {
-        const idx = Math.min(enemy.damageLevel - 1, damaged.length - 1);
-        model = damaged[idx];
-      }
-    }
+    const model = ENEMY_MODELS[enemy.type];
     if (!model) return;
 
     const overlay = this.game.registry.get('shaderOverlay');
@@ -812,11 +817,12 @@ export class GameScene extends Phaser.Scene {
     const typeScale = enemy.isBoss ? 1.2 : 1.8;
     const finalScale = drawScale * typeScale;
 
-    // CRT mode: flat 2D projection (uniform scale, no per-vertex perspective)
-    // Vector mode: full 3D per-vertex perspective
-    const lines = isCRT
-      ? projectModelFlat(model, item.screenX, item.screenY, finalScale, rotation)
-      : projectModel(model, item.x, item.y, item.z, finalScale, rotation);
+    const lines = projectModelFlat(model, item.screenX, item.screenY, finalScale, rotation);
+
+    // Holographic glitch for damaged enemies
+    if (enemy.damageLevel > 0) {
+      applyHoloGlitch(lines, enemy.damageLevel, performance.now());
+    }
 
     // Phantom: ghostly low-alpha glow when flickering out
     const alpha = enemy.phantomAlpha;
@@ -840,7 +846,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   _drawUfo(item) {
-    const lines = projectModel(UFO_SAUCER, item.x, item.y, item.z, item.scale * 1.6);
+    const lines = projectModelFlat(UFO_SAUCER, item.screenX, item.screenY, item.scale * 1.6);
     for (const line of lines) {
       const col = line.c ? CONFIG.COLORS_2.UFO : CONFIG.COLORS.UFO;
       drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
@@ -910,7 +916,7 @@ export class GameScene extends Phaser.Scene {
       const pulse = Math.sin(performance.now() * 0.012) * 0.5 + 0.5;
       color = pulse > 0.5 ? CONFIG.COLORS.TRACTOR_BEAM : CONFIG.COLORS.CAPTURED_SHIP;
     }
-    const lines = projectModel(PLAYER_SHIP, item.x, item.y, item.z, item.scale * 1.1, rotation);
+    const lines = projectModelFlat(PLAYER_SHIP, item.screenX, item.screenY, item.scale * 1.1, rotation);
     for (const line of lines) {
       drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, color);
     }

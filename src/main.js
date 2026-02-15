@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from './game/config.js';
 import { TitleScene } from './game/scenes/TitleScene.js';
 import { GameScene } from './game/scenes/GameScene.js';
+import { ShipViewerScene } from './game/scenes/ShipViewerScene.js';
 import { SoundEngine } from './game/audio/SoundEngine.js';
 import { createShaderOverlay } from './game/shaderOverlay.js';
 
@@ -26,7 +27,9 @@ document.fonts.ready.then(() => {
     width: CONFIG.WIDTH,
     height: CONFIG.HEIGHT,
     backgroundColor: CONFIG.COLORS.BG,
-    scene: [TitleScene, GameScene],
+    scene: window.location.search.includes('ships')
+      ? [ShipViewerScene, TitleScene, GameScene]
+      : [TitleScene, GameScene, ShipViewerScene],
     render: {
       pixelArt: false,
       antialias: true,

@@ -10,40 +10,54 @@
  */
 
 // ─── PLAYER SHIP ───
-// Detailed vector fighter with center fin, inner chevron, and stepped wings.
+// Sci-fi fighter: tall nose spike, elongated fuselage, swept wings, twin engine nacelles, cockpit canopy.
 export const PLAYER_SHIP = [
-  // Center fin (tall spike)
-  { from: [0, -13, -1.5], to: [-2.5, -7, 0] },
-  { from: [0, -13, -1.5], to: [2.5, -7, 0] },
-  // Upper hull: fin base to wing roots
-  { from: [-2.5, -7, 0], to: [-5, -1, 0.5] },
-  { from: [2.5, -7, 0], to: [5, -1, 0.5] },
-  // Inner chevron upper (V pointing down from fin base)
-  { from: [-2.5, -7, 0], to: [0, -3, -0.5] },
-  { from: [2.5, -7, 0], to: [0, -3, -0.5] },
-  // Inner chevron lower (arms spreading out)
-  { from: [0, -3, -0.5], to: [-4, 2, 0] },
-  { from: [0, -3, -0.5], to: [4, 2, 0] },
-  // Body edges: wing root to chevron outer
-  { from: [-5, -1, 0.5], to: [-4, 2, 0] },
-  { from: [5, -1, 0.5], to: [4, 2, 0] },
-  // Wing sweep out
-  { from: [-5, -1, 0.5], to: [-12, 3, 1.5] },
-  { from: [5, -1, 0.5], to: [12, 3, 1.5] },
+  // ── Nose spike ──
+  { from: [0, -14, -1.5], to: [-2, -9, 0] },
+  { from: [0, -14, -1.5], to: [2, -9, 0] },
+
+  // ── Fuselage (elongated central body) ──
+  // Upper fuselage: nose base widens to shoulders
+  { from: [-2, -9, 0], to: [-3, -3, 0.3] },
+  { from: [2, -9, 0], to: [3, -3, 0.3] },
+  // Mid fuselage: parallel sides
+  { from: [-3, -3, 0.3], to: [-3, 3, 0.3] },
+  { from: [3, -3, 0.3], to: [3, 3, 0.3] },
+  // Lower fuselage: taper to tail
+  { from: [-3, 3, 0.3], to: [-1.5, 7, 0] },
+  { from: [3, 3, 0.3], to: [1.5, 7, 0] },
+  // Tail bar
+  { from: [-1.5, 7, 0], to: [1.5, 7, 0] },
+
+  // ── Cockpit canopy (secondary color — pink/magenta) ──
+  { from: [0, -6, -0.5], to: [-1.5, -4, -0.5], c: 1 },
+  { from: [0, -6, -0.5], to: [1.5, -4, -0.5], c: 1 },
+  { from: [-1.5, -4, -0.5], to: [-1, -2.5, -0.5], c: 1 },
+  { from: [1.5, -4, -0.5], to: [1, -2.5, -0.5], c: 1 },
+  { from: [-1, -2.5, -0.5], to: [1, -2.5, -0.5], c: 1 },
+
+  // ── Wings ──
+  // Wing sweep out from fuselage shoulder
+  { from: [-3, -2, 0.5], to: [-11, 3, 1.5] },
+  { from: [3, -2, 0.5], to: [11, 3, 1.5] },
   // Wing step (notch inward)
-  { from: [-12, 3, 1.5], to: [-9, 5, 1] },
-  { from: [12, 3, 1.5], to: [9, 5, 1] },
-  // Wing trailing edge to body rear
-  { from: [-9, 5, 1], to: [-5, 7, 0.5] },
-  { from: [9, 5, 1], to: [5, 7, 0.5] },
-  // Body side panels
-  { from: [-4, 2, 0], to: [-5, 7, 0.5] },
-  { from: [4, 2, 0], to: [5, 7, 0.5] },
-  // Rear converge to engine
-  { from: [-5, 7, 0.5], to: [-3, 8, 0] },
-  { from: [5, 7, 0.5], to: [3, 8, 0] },
-  // Engine bar
-  { from: [-3, 8, 0], to: [3, 8, 0] },
+  { from: [-11, 3, 1.5], to: [-9, 5, 1] },
+  { from: [11, 3, 1.5], to: [9, 5, 1] },
+  // Wing trailing edge to nacelle outer wall
+  { from: [-9, 5, 1], to: [-6.5, 3, 0.5] },
+  { from: [9, 5, 1], to: [6.5, 3, 0.5] },
+
+  // ── Engine nacelles (twin rectangular pods) ──
+  // Left nacelle
+  { from: [-4.5, 2, 0.5], to: [-6.5, 2, 0.5] },
+  { from: [-6.5, 2, 0.5], to: [-6.5, 9, 0.5] },
+  { from: [-6.5, 9, 0.5], to: [-4.5, 9, 0.5] },
+  { from: [-4.5, 9, 0.5], to: [-4.5, 2, 0.5] },
+  // Right nacelle
+  { from: [4.5, 2, 0.5], to: [6.5, 2, 0.5] },
+  { from: [6.5, 2, 0.5], to: [6.5, 9, 0.5] },
+  { from: [6.5, 9, 0.5], to: [4.5, 9, 0.5] },
+  { from: [4.5, 9, 0.5], to: [4.5, 2, 0.5] },
 ];
 
 // ─── GRUNT ───
@@ -107,110 +121,138 @@ export const ATTACKER = [
 ];
 
 // ─── COMMANDER ───
-// Regal squid/crown: triple crown spikes, domed head, wide wings, trailing tentacles.
+// Robotic armored figure: rounded dome helmet, wide angular shoulders, vent panels, Y-split legs.
 export const COMMANDER = [
-  // Crown (three spikes, W-shape)
-  { from: [-6, -10, -1], to: [0, -13, -1.5], c: 1 },
-  { from: [0, -13, -1.5], to: [6, -10, -1], c: 1 },
-  { from: [-6, -10, -1], to: [-3, -7, 0], c: 1 },
-  { from: [6, -10, -1], to: [3, -7, 0], c: 1 },
-  { from: [0, -13, -1.5], to: [0, -7, -0.5], c: 1 },
-  // Head dome
-  { from: [-3, -7, 0], to: [3, -7, 0] },
-  { from: [-3, -7, 0], to: [-5, -3, 0] },
-  { from: [3, -7, 0], to: [5, -3, 0] },
-  // Body
-  { from: [-5, -3, 0], to: [-4, 2, 0] },
-  { from: [5, -3, 0], to: [4, 2, 0] },
-  // Wide ornate wings
-  { from: [-5, -3, 0], to: [-12, -5, 2] },
-  { from: [-12, -5, 2], to: [-12, 1, 1.5] },
-  { from: [-12, 1, 1.5], to: [-4, 2, 0] },
-  { from: [5, -3, 0], to: [12, -5, 2] },
-  { from: [12, -5, 2], to: [12, 1, 1.5] },
-  { from: [12, 1, 1.5], to: [4, 2, 0] },
-  // Trailing tentacles
-  { from: [-4, 2, 0], to: [-3, 7, 0.5], c: 1 },
-  { from: [4, 2, 0], to: [3, 7, 0.5], c: 1 },
-  { from: [0, -7, -0.5], to: [0, 5, 0], c: 1 },
-  { from: [-2, 2, 0], to: [-1, 6, 0.5], c: 1 },
-  { from: [2, 2, 0], to: [1, 6, 0.5], c: 1 },
+  // Dome helmet (accent)
+  { from: [-3, -10, -0.5], to: [-1, -12, -1], c: 1 },
+  { from: [-1, -12, -1], to: [1, -12, -1], c: 1 },
+  { from: [1, -12, -1], to: [3, -10, -0.5], c: 1 },
+  // Dome base
+  { from: [-3, -10, -0.5], to: [3, -10, -0.5] },
+  // Neck
+  { from: [-2, -10, -0.5], to: [-2, -8, 0] },
+  { from: [2, -10, -0.5], to: [2, -8, 0] },
+  // Wide angular shoulders
+  { from: [-2, -8, 0], to: [-10, -7, 1] },
+  { from: [2, -8, 0], to: [10, -7, 1] },
+  // Shoulder drops
+  { from: [-10, -7, 1], to: [-9, -3, 0.5] },
+  { from: [10, -7, 1], to: [9, -3, 0.5] },
+  // Vent panels on shoulders (accent)
+  { from: [-8, -7, 0.8], to: [-8, -4, 0.5], c: 1 },
+  { from: [-6, -7, 0.6], to: [-6, -4, 0.3], c: 1 },
+  { from: [8, -7, 0.8], to: [8, -4, 0.5], c: 1 },
+  { from: [6, -7, 0.6], to: [6, -4, 0.3], c: 1 },
+  // Torso (narrowing)
+  { from: [-9, -3, 0.5], to: [-5, 2, 0] },
+  { from: [9, -3, 0.5], to: [5, 2, 0] },
+  // Center seam (accent)
+  { from: [0, -8, -0.3], to: [0, 2, -0.3], c: 1 },
+  // Waist bar
+  { from: [-5, 2, 0], to: [5, 2, 0] },
+  // Y-split legs
+  { from: [-5, 2, 0], to: [-6, 8, 0.5] },
+  { from: [5, 2, 0], to: [6, 8, 0.5] },
+  // Center V (accent)
+  { from: [0, 2, -0.3], to: [-2, 7, 0.3], c: 1 },
+  { from: [0, 2, -0.3], to: [2, 7, 0.3], c: 1 },
 ];
 
 // ─── SPINNER ───
-// 6-spoke gear wheel: hexagonal hub, 6 radial spokes, outer hex ring. Z-alternation for 3D spin.
+// Vortex pinwheel: nested offset diamonds with spiral connections and outward spikes.
 export const SPINNER = [
-  // Inner hexagon hub
-  { from: [0, -2.5, 0], to: [2.2, -1.25, 0] },
-  { from: [2.2, -1.25, 0], to: [2.2, 1.25, 0] },
-  { from: [2.2, 1.25, 0], to: [0, 2.5, 0] },
-  { from: [0, 2.5, 0], to: [-2.2, 1.25, 0] },
-  { from: [-2.2, 1.25, 0], to: [-2.2, -1.25, 0] },
-  { from: [-2.2, -1.25, 0], to: [0, -2.5, 0] },
-  // 6 spokes (alternating Z for 3D wobble when spinning)
-  { from: [0, -2.5, 0], to: [0, -8, 1], c: 1 },
-  { from: [2.2, -1.25, 0], to: [7, -4, -1], c: 1 },
-  { from: [2.2, 1.25, 0], to: [7, 4, 1], c: 1 },
-  { from: [0, 2.5, 0], to: [0, 8, -1], c: 1 },
-  { from: [-2.2, 1.25, 0], to: [-7, 4, 1], c: 1 },
-  { from: [-2.2, -1.25, 0], to: [-7, -4, -1], c: 1 },
-  // Outer hexagon ring (connects spoke tips)
-  { from: [0, -8, 1], to: [7, -4, -1] },
-  { from: [7, -4, -1], to: [7, 4, 1] },
-  { from: [7, 4, 1], to: [0, 8, -1] },
-  { from: [0, 8, -1], to: [-7, 4, 1] },
-  { from: [-7, 4, 1], to: [-7, -4, -1] },
-  { from: [-7, -4, -1], to: [0, -8, 1] },
+  // Outer diamond (z-alternating for 3D wobble)
+  { from: [0, -8, 1.5], to: [8, 0, -1.5] },
+  { from: [8, 0, -1.5], to: [0, 8, 1.5] },
+  { from: [0, 8, 1.5], to: [-8, 0, -1.5] },
+  { from: [-8, 0, -1.5], to: [0, -8, 1.5] },
+  // Inner diamond (accent, rotated ~30°)
+  { from: [2, -3.5, -0.5], to: [3.5, 2, 0.5], c: 1 },
+  { from: [3.5, 2, 0.5], to: [-2, 3.5, -0.5], c: 1 },
+  { from: [-2, 3.5, -0.5], to: [-3.5, -2, 0.5], c: 1 },
+  { from: [-3.5, -2, 0.5], to: [2, -3.5, -0.5], c: 1 },
+  // Vortex spokes: outer corners → offset inner corners (creates spiral)
+  { from: [0, -8, 1.5], to: [2, -3.5, -0.5], c: 1 },
+  { from: [8, 0, -1.5], to: [3.5, 2, 0.5], c: 1 },
+  { from: [0, 8, 1.5], to: [-2, 3.5, -0.5], c: 1 },
+  { from: [-8, 0, -1.5], to: [-3.5, -2, 0.5], c: 1 },
+  // Outer spikes (tangent to spin direction)
+  { from: [0, -8, 1.5], to: [3, -11, 2] },
+  { from: [8, 0, -1.5], to: [11, 3, -2] },
+  { from: [0, 8, 1.5], to: [-3, 11, 2] },
+  { from: [-8, 0, -1.5], to: [-11, -3, -2] },
 ];
 
 // ─── BOMBER ───
-// Heavy beetle: rounded shell, head pincers, center seam, side armor plates.
+// Armored angular craft: flat head plate, upward horns, side armor, cockpit window.
 export const BOMBER = [
-  // Shell outline (rounded)
-  { from: [0, -8, -1], to: [5, -6, 0] },
-  { from: [5, -6, 0], to: [7, -1, 0.5] },
-  { from: [7, -1, 0.5], to: [6, 4, 0] },
-  { from: [6, 4, 0], to: [0, 7, 0] },
-  { from: [0, 7, 0], to: [-6, 4, 0] },
-  { from: [-6, 4, 0], to: [-7, -1, 0.5] },
-  { from: [-7, -1, 0.5], to: [-5, -6, 0] },
-  { from: [-5, -6, 0], to: [0, -8, -1] },
-  // Shell seam (center line)
-  { from: [0, -8, -1], to: [0, 7, 0] },
-  // Head pincers
-  { from: [-5, -6, 0], to: [-3, -10, -1], c: 1 },
-  { from: [5, -6, 0], to: [3, -10, -1], c: 1 },
-  { from: [-3, -10, -1], to: [3, -10, -1], c: 1 },
+  // Head plate (flat angular top)
+  { from: [-5, -6, -0.5], to: [5, -6, -0.5] },
+  // Body (angular, widening then tapering)
+  { from: [-5, -6, -0.5], to: [-7, -1, 0.5] },
+  { from: [5, -6, -0.5], to: [7, -1, 0.5] },
+  { from: [-7, -1, 0.5], to: [-6, 4, 0.3] },
+  { from: [7, -1, 0.5], to: [6, 4, 0.3] },
+  { from: [-6, 4, 0.3], to: [0, 7, 0] },
+  { from: [6, 4, 0.3], to: [0, 7, 0] },
+  // Center seam
+  { from: [0, -6, -0.5], to: [0, 7, 0] },
+  // Horns
+  { from: [-4, -6, -0.5], to: [-5, -11, -1.5], c: 1 },
+  { from: [-5, -11, -1.5], to: [-3, -10, -1], c: 1 },
+  { from: [4, -6, -0.5], to: [5, -11, -1.5], c: 1 },
+  { from: [5, -11, -1.5], to: [3, -10, -1], c: 1 },
   // Side armor plates
   { from: [-7, -1, 0.5], to: [-10, 0, 1.5], c: 1 },
   { from: [-10, 0, 1.5], to: [-10, 3, 1.5], c: 1 },
-  { from: [-10, 3, 1.5], to: [-6, 4, 0], c: 1 },
+  { from: [-10, 3, 1.5], to: [-6, 4, 0.3], c: 1 },
   { from: [7, -1, 0.5], to: [10, 0, 1.5], c: 1 },
   { from: [10, 0, 1.5], to: [10, 3, 1.5], c: 1 },
-  { from: [10, 3, 1.5], to: [6, 4, 0], c: 1 },
+  { from: [10, 3, 1.5], to: [6, 4, 0.3], c: 1 },
+  // Cockpit window
+  { from: [-2, -3, -0.3], to: [2, -3, -0.3], c: 1 },
+  { from: [2, -3, -0.3], to: [2, 1, -0.3], c: 1 },
+  { from: [2, 1, -0.3], to: [-2, 1, -0.3], c: 1 },
+  { from: [-2, 1, -0.3], to: [-2, -3, -0.3], c: 1 },
 ];
 
 // ─── GUARDIAN ───
-// Diamond crystal fortress: nested diamonds with cross-braces and center cross.
+// Triple crystal: three diamonds in Y-formation, connected at center junction, inner cores.
 export const GUARDIAN = [
-  // Outer diamond
-  { from: [0, -11, -1], to: [9, 0, 0.5] },
-  { from: [9, 0, 0.5], to: [0, 11, -1] },
-  { from: [0, 11, -1], to: [-9, 0, 0.5] },
-  { from: [-9, 0, 0.5], to: [0, -11, -1] },
-  // Inner diamond
-  { from: [0, -6, 0], to: [5, 0, 0], c: 1 },
-  { from: [5, 0, 0], to: [0, 6, 0], c: 1 },
-  { from: [0, 6, 0], to: [-5, 0, 0], c: 1 },
-  { from: [-5, 0, 0], to: [0, -6, 0], c: 1 },
-  // Cross-braces (inner to outer)
-  { from: [0, -6, 0], to: [0, -11, -1] },
-  { from: [5, 0, 0], to: [9, 0, 0.5] },
-  { from: [0, 6, 0], to: [0, 11, -1] },
-  { from: [-5, 0, 0], to: [-9, 0, 0.5] },
-  // Center cross
-  { from: [-5, 0, 0], to: [5, 0, 0], c: 1 },
-  { from: [0, -6, 0], to: [0, 6, 0], c: 1 },
+  // Upper-left diamond (outer)
+  { from: [-3, -5, -1], to: [-8, -10, 0.5] },
+  { from: [-8, -10, 0.5], to: [-13, -5, -1] },
+  { from: [-13, -5, -1], to: [-8, 0, 0.5] },
+  { from: [-8, 0, 0.5], to: [-3, -5, -1] },
+  // Upper-left diamond (inner core, accent)
+  { from: [-6, -5, -0.3], to: [-8, -8, 0.3], c: 1 },
+  { from: [-8, -8, 0.3], to: [-10, -5, -0.3], c: 1 },
+  { from: [-10, -5, -0.3], to: [-8, -2, 0.3], c: 1 },
+  { from: [-8, -2, 0.3], to: [-6, -5, -0.3], c: 1 },
+  // Upper-right diamond (outer)
+  { from: [3, -5, -1], to: [8, -10, 0.5] },
+  { from: [8, -10, 0.5], to: [13, -5, -1] },
+  { from: [13, -5, -1], to: [8, 0, 0.5] },
+  { from: [8, 0, 0.5], to: [3, -5, -1] },
+  // Upper-right diamond (inner core, accent)
+  { from: [6, -5, -0.3], to: [8, -8, 0.3], c: 1 },
+  { from: [8, -8, 0.3], to: [10, -5, -0.3], c: 1 },
+  { from: [10, -5, -0.3], to: [8, -2, 0.3], c: 1 },
+  { from: [8, -2, 0.3], to: [6, -5, -0.3], c: 1 },
+  // Bottom diamond (outer)
+  { from: [0, 2, -1], to: [5, 7, 0.5] },
+  { from: [5, 7, 0.5], to: [0, 12, -1] },
+  { from: [0, 12, -1], to: [-5, 7, 0.5] },
+  { from: [-5, 7, 0.5], to: [0, 2, -1] },
+  // Bottom diamond (inner core, accent)
+  { from: [0, 4.5, -0.3], to: [2.5, 7, 0.3], c: 1 },
+  { from: [2.5, 7, 0.3], to: [0, 9.5, -0.3], c: 1 },
+  { from: [0, 9.5, -0.3], to: [-2.5, 7, 0.3], c: 1 },
+  { from: [-2.5, 7, 0.3], to: [0, 4.5, -0.3], c: 1 },
+  // Junction bars (connecting diamonds at center)
+  { from: [-3, -5, -1], to: [0, 0, 0], c: 1 },
+  { from: [3, -5, -1], to: [0, 0, 0], c: 1 },
+  { from: [0, 2, -1], to: [0, 0, 0], c: 1 },
 ];
 
 // ─── PHANTOM ───
@@ -240,63 +282,61 @@ export const PHANTOM = [
 ];
 
 // ─── SWARM ───
-// Small spider/ant: compact body, angular legs, antennae.
+// Circular pod: octagonal shell, inner diamond ring, connecting struts.
 export const SWARM = [
-  // Head
-  { from: [0, -6, 0], to: [-2, -3, 0.3] },
-  { from: [0, -6, 0], to: [2, -3, 0.3] },
-  // Antennae
-  { from: [0, -6, 0], to: [-3, -8, -0.5], c: 1 },
-  { from: [0, -6, 0], to: [3, -8, -0.5], c: 1 },
-  // Body
-  { from: [-2, -3, 0.3], to: [-3, 1, 0.3] },
-  { from: [2, -3, 0.3], to: [3, 1, 0.3] },
-  { from: [-3, 1, 0.3], to: [0, 4, 0] },
-  { from: [3, 1, 0.3], to: [0, 4, 0] },
-  // Legs (angular, splayed)
-  { from: [-2, -1, 0.3], to: [-6, -4, 1], c: 1 },
-  { from: [-3, 1, 0.3], to: [-6, 3, 1], c: 1 },
-  { from: [2, -1, 0.3], to: [6, -4, 1], c: 1 },
-  { from: [3, 1, 0.3], to: [6, 3, 1], c: 1 },
+  // Octagonal outer shell
+  { from: [-3, -7, 0], to: [3, -7, 0] },
+  { from: [3, -7, 0], to: [7, -3, 0.5] },
+  { from: [7, -3, 0.5], to: [7, 3, 0.5] },
+  { from: [7, 3, 0.5], to: [3, 6, 0] },
+  { from: [3, 6, 0], to: [-3, 6, 0] },
+  { from: [-3, 6, 0], to: [-7, 3, 0.5] },
+  { from: [-7, 3, 0.5], to: [-7, -3, 0.5] },
+  { from: [-7, -3, 0.5], to: [-3, -7, 0] },
+  // Inner diamond ring (accent)
+  { from: [0, -3.5, -0.3], to: [3.5, 0, 0.3], c: 1 },
+  { from: [3.5, 0, 0.3], to: [0, 3, -0.3], c: 1 },
+  { from: [0, 3, -0.3], to: [-3.5, 0, 0.3], c: 1 },
+  { from: [-3.5, 0, 0.3], to: [0, -3.5, -0.3], c: 1 },
+  // Connecting struts (accent)
+  { from: [0, -7, 0], to: [0, -3.5, -0.3], c: 1 },
+  { from: [7, 0, 0.5], to: [3.5, 0, 0.3], c: 1 },
+  { from: [0, 6, 0], to: [0, 3, -0.3], c: 1 },
+  { from: [-7, 0, 0.5], to: [-3.5, 0, 0.3], c: 1 },
 ];
 
 // ─── BOSS GALAGA ───
-// Grand warship: double crown, massive wings with inner struts, imposing tail, center spine.
+// Angular warship: twin crown peaks, wide diamond wings, central diamond, W-pattern tail.
 export const BOSS_GALAGA = [
-  // Double crown (outer W-shape)
-  { from: [-8, -14, -1.5], to: [-4, -11, -1], c: 1 },
-  { from: [-4, -11, -1], to: [0, -16, -2], c: 1 },
-  { from: [0, -16, -2], to: [4, -11, -1], c: 1 },
-  { from: [4, -11, -1], to: [8, -14, -1.5], c: 1 },
-  // Inner crown
-  { from: [-5, -12, -1], to: [0, -14, -1.5], c: 1 },
-  { from: [0, -14, -1.5], to: [5, -12, -1], c: 1 },
-  // Crown to head
-  { from: [-8, -14, -1.5], to: [-6, -8, 0] },
-  { from: [8, -14, -1.5], to: [6, -8, 0] },
-  // Head
-  { from: [-6, -8, 0], to: [6, -8, 0] },
-  // Body
-  { from: [-6, -8, 0], to: [-7, -1, 0] },
-  { from: [6, -8, 0], to: [7, -1, 0] },
-  // Wide wings
-  { from: [-7, -5, 0], to: [-15, -7, 2.5] },
-  { from: [-15, -7, 2.5], to: [-15, 1, 2] },
-  { from: [-15, 1, 2], to: [-7, -1, 0] },
-  { from: [7, -5, 0], to: [15, -7, 2.5] },
-  { from: [15, -7, 2.5], to: [15, 1, 2] },
-  { from: [15, 1, 2], to: [7, -1, 0] },
-  // Wing inner struts
-  { from: [-7, -5, 0], to: [-14, -1, 2], c: 1 },
-  { from: [7, -5, 0], to: [14, -1, 2], c: 1 },
-  // Tail
-  { from: [-7, -1, 0], to: [-5, 6, 0.5] },
-  { from: [7, -1, 0], to: [5, 6, 0.5] },
-  { from: [-5, 6, 0.5], to: [0, 9, 1] },
-  { from: [5, 6, 0.5], to: [0, 9, 1] },
-  // Center spine
-  { from: [0, -16, -2], to: [0, -8, -2] },
-  { from: [0, -8, -2], to: [0, 2, -1.5] },
+  // Twin crown peaks (accent)
+  { from: [-4, -15, -1.5], to: [-7, -9, 0], c: 1 },
+  { from: [-4, -15, -1.5], to: [-1, -9, -0.5], c: 1 },
+  { from: [4, -15, -1.5], to: [7, -9, 0], c: 1 },
+  { from: [4, -15, -1.5], to: [1, -9, -0.5], c: 1 },
+  // Crown valley (accent)
+  { from: [-1, -9, -0.5], to: [0, -11, -1], c: 1 },
+  { from: [1, -9, -0.5], to: [0, -11, -1], c: 1 },
+  // Crown base bars
+  { from: [-7, -9, 0], to: [-1, -9, -0.5] },
+  { from: [1, -9, -0.5], to: [7, -9, 0] },
+  // Wide angular wings (diamond-shaped, pointed at sides)
+  { from: [-7, -9, 0], to: [-15, -1, 2] },
+  { from: [-15, -1, 2], to: [-7, 5, 0] },
+  { from: [7, -9, 0], to: [15, -1, 2] },
+  { from: [15, -1, 2], to: [7, 5, 0] },
+  // Wing struts (accent)
+  { from: [-7, -9, 0], to: [-14, 2, 1.5], c: 1 },
+  { from: [7, -9, 0], to: [14, 2, 1.5], c: 1 },
+  // Bottom W-pattern
+  { from: [-7, 5, 0], to: [-3, 9, 0.5] },
+  { from: [-3, 9, 0.5], to: [0, 5, 0] },
+  { from: [0, 5, 0], to: [3, 9, 0.5] },
+  { from: [3, 9, 0.5], to: [7, 5, 0] },
+  // Central diamond (accent)
+  { from: [0, -6, -0.5], to: [4, -1, -0.5], c: 1 },
+  { from: [4, -1, -0.5], to: [0, 4, -0.5], c: 1 },
+  { from: [0, 4, -0.5], to: [-4, -1, -0.5], c: 1 },
+  { from: [-4, -1, -0.5], to: [0, -6, -0.5], c: 1 },
 ];
 
 // ─── UFO SAUCER ───
@@ -358,116 +398,203 @@ export const ENEMY_MODELS = {
 // ═══════════════════════════════════════════════════════════
 
 // ─── BOMBER DAMAGED ───
-// Shell cracked, right armor plate destroyed, one pincer broken
+// Full shape preserved but right side warped: buckled hull, bent horn, displaced armor plate.
 const BOMBER_DAMAGED = [
-  // Shell (gap on right side)
-  { from: [0, -8, -1], to: [5, -6, 0] },
-  { from: [5, -6, 0], to: [7, -1, 0.5] },
-  { from: [7, -1, 0.5], to: [5, 2, 0] },
-  // crack/gap
-  { from: [4, 4, 0], to: [0, 7, 0] },
-  { from: [0, 7, 0], to: [-6, 4, 0] },
-  { from: [-6, 4, 0], to: [-7, -1, 0.5] },
-  { from: [-7, -1, 0.5], to: [-5, -6, 0] },
-  { from: [-5, -6, 0], to: [0, -8, -1] },
-  // Shell seam
-  { from: [0, -8, -1], to: [0, 7, 0] },
-  // Head pincers (one broken)
-  { from: [-5, -6, 0], to: [-3, -10, -1], c: 1 },
-  { from: [5, -6, 0], to: [4, -8, -0.5], c: 1 },
-  // Left armor intact
+  // Head plate (cracked — diagonal fracture splits it)
+  { from: [-5, -6, -0.5], to: [1, -6, -0.5] },
+  { from: [2, -5.5, -0.3], to: [5, -6, -0.5] },
+  { from: [1, -6, -0.5], to: [2, -5.5, -0.3] },  // crack line
+  // Left body (intact)
+  { from: [-5, -6, -0.5], to: [-7, -1, 0.5] },
+  { from: [-7, -1, 0.5], to: [-6, 4, 0.3] },
+  { from: [-6, 4, 0.3], to: [0, 7, 0] },
+  // Right body (buckled inward — vertices shifted)
+  { from: [5, -6, -0.5], to: [5.5, -1, 0.3] },
+  { from: [5.5, -1, 0.3], to: [5, 4, 0.5] },
+  { from: [5, 4, 0.5], to: [0, 7, 0] },
+  // Center seam (bent at impact point)
+  { from: [0, -6, -0.5], to: [0.5, 0, 0] },
+  { from: [0.5, 0, 0], to: [0, 7, 0] },
+  // Left horn (intact)
+  { from: [-4, -6, -0.5], to: [-5, -11, -1.5], c: 1 },
+  { from: [-5, -11, -1.5], to: [-3, -10, -1], c: 1 },
+  // Right horn (bent outward at wrong angle)
+  { from: [4, -6, -0.5], to: [6.5, -10, -0.8], c: 1 },
+  { from: [6.5, -10, -0.8], to: [5, -9, -0.5], c: 1 },
+  // Left armor (intact)
   { from: [-7, -1, 0.5], to: [-10, 0, 1.5], c: 1 },
   { from: [-10, 0, 1.5], to: [-10, 3, 1.5], c: 1 },
-  { from: [-10, 3, 1.5], to: [-6, 4, 0], c: 1 },
-  // Right armor destroyed (stub)
-  { from: [7, -1, 0.5], to: [8, 0, 1], c: 1 },
+  { from: [-10, 3, 1.5], to: [-6, 4, 0.3], c: 1 },
+  // Right armor (displaced outward — separating from buckled hull)
+  { from: [8, -1, 1.5], to: [11, 0.5, 2], c: 1 },
+  { from: [11, 0.5, 2], to: [11, 3.5, 2], c: 1 },
+  { from: [11, 3.5, 2], to: [7, 5, 1], c: 1 },
+  // Cockpit window (skewed from impact)
+  { from: [-2, -3, -0.3], to: [2.5, -2.5, -0.3], c: 1 },
+  { from: [2.5, -2.5, -0.3], to: [2, 1, -0.3], c: 1 },
+  { from: [2, 1, -0.3], to: [-2, 1, -0.3], c: 1 },
+  { from: [-2, 1, -0.3], to: [-2, -3, -0.3], c: 1 },
 ];
 
 // ─── COMMANDER DAMAGED ───
-// Crown broken off, tentacles shortened
+// Full shape preserved but distorted: dome cracked, right shoulder drooping, damage scar across torso.
 const COMMANDER_DAMAGED = [
-  // Broken crown stubs
-  { from: [-3, -7, 0], to: [-4, -9, -0.5], c: 1 },
-  { from: [3, -7, 0], to: [4, -9, -0.5], c: 1 },
-  // Head dome
-  { from: [-3, -7, 0], to: [3, -7, 0] },
-  { from: [-3, -7, 0], to: [-5, -3, 0] },
-  { from: [3, -7, 0], to: [5, -3, 0] },
-  // Body
-  { from: [-5, -3, 0], to: [-4, 2, 0] },
-  { from: [5, -3, 0], to: [4, 2, 0] },
-  // Wings
-  { from: [-5, -3, 0], to: [-12, -5, 2] },
-  { from: [-12, -5, 2], to: [-12, 1, 1.5] },
-  { from: [-12, 1, 1.5], to: [-4, 2, 0] },
-  { from: [5, -3, 0], to: [12, -5, 2] },
-  { from: [12, -5, 2], to: [12, 1, 1.5] },
-  { from: [12, 1, 1.5], to: [4, 2, 0] },
-  // Shortened tentacles
-  { from: [-4, 2, 0], to: [-3, 5, 0.5], c: 1 },
-  { from: [4, 2, 0], to: [3, 5, 0.5], c: 1 },
+  // Dome helmet (accent — cracked with visible fracture)
+  { from: [-3, -10, -0.5], to: [-1, -12, -1], c: 1 },
+  { from: [-1, -12, -1], to: [0.5, -12, -1], c: 1 },
+  { from: [0.5, -12, -1], to: [1, -11, -0.8], c: 1 },  // fracture jog
+  { from: [1, -11, -0.8], to: [3, -10, -0.5], c: 1 },
+  // Dome base
+  { from: [-3, -10, -0.5], to: [3, -10, -0.5] },
+  // Neck
+  { from: [-2, -10, -0.5], to: [-2, -8, 0] },
+  { from: [2, -10, -0.5], to: [2, -8, 0] },
+  // Left shoulder (intact)
+  { from: [-2, -8, 0], to: [-10, -7, 1] },
+  { from: [-10, -7, 1], to: [-9, -3, 0.5] },
+  // Right shoulder (drooping — displaced downward + outward)
+  { from: [2, -8, 0], to: [11, -5, 1.5] },
+  { from: [11, -5, 1.5], to: [10, -1, 1] },
+  // Left vents (intact, accent)
+  { from: [-8, -7, 0.8], to: [-8, -4, 0.5], c: 1 },
+  { from: [-6, -7, 0.6], to: [-6, -4, 0.3], c: 1 },
+  // Right vents (tilted/dangling from drooped shoulder, accent)
+  { from: [9, -5, 1.2], to: [9.5, -2, 0.8], c: 1 },
+  { from: [7, -5.5, 0.8], to: [7.5, -2.5, 0.5], c: 1 },
+  // Torso (left intact, right connects to displaced shoulder)
+  { from: [-9, -3, 0.5], to: [-5, 2, 0] },
+  { from: [10, -1, 1], to: [5, 2, 0] },
+  // Center seam (accent)
+  { from: [0, -8, -0.3], to: [0, 2, -0.3], c: 1 },
+  // Damage scar across chest (diagonal slash)
+  { from: [-3, -1, 0], to: [4, 1, 0.3] },
+  // Waist bar
+  { from: [-5, 2, 0], to: [5, 2, 0] },
+  // Left leg (intact)
+  { from: [-5, 2, 0], to: [-6, 8, 0.5] },
+  // Right leg (splayed outward at wrong angle)
+  { from: [5, 2, 0], to: [7, 7, 0.8] },
+  // Center V (accent — left intact, right bent)
+  { from: [0, 2, -0.3], to: [-2, 7, 0.3], c: 1 },
+  { from: [0, 2, -0.3], to: [1.5, 5, 0.2], c: 1 },
 ];
 
 // ─── BOSS GALAGA DAMAGED ───
-// One wing broken, crown damaged, missing strut
+// Full shape but distorted: right crown bent, right wing compressed, diamond warped with fracture.
 const BOSS_GALAGA_DAMAGED = [
-  // Damaged crown (partial)
-  { from: [-5, -12, -1], to: [0, -14, -1.5], c: 1 },
-  { from: [0, -14, -1.5], to: [4, -11, -1], c: 1 },
-  // Crown to head
-  { from: [-5, -12, -1], to: [-6, -8, 0] },
-  { from: [4, -11, -1], to: [6, -8, 0] },
-  // Head
-  { from: [-6, -8, 0], to: [6, -8, 0] },
-  // Body
-  { from: [-6, -8, 0], to: [-7, -1, 0] },
-  { from: [6, -8, 0], to: [7, -1, 0] },
-  // Left wing intact with strut
-  { from: [-7, -5, 0], to: [-15, -7, 2.5] },
-  { from: [-15, -7, 2.5], to: [-15, 1, 2] },
-  { from: [-15, 1, 2], to: [-7, -1, 0] },
-  { from: [-7, -5, 0], to: [-14, -1, 2], c: 1 },
-  // Right wing broken (stub)
-  { from: [7, -5, 0], to: [11, -6, 1.5] },
-  { from: [11, -6, 1.5], to: [9, -1, 1] },
-  // Tail
-  { from: [-7, -1, 0], to: [-5, 6, 0.5] },
-  { from: [7, -1, 0], to: [5, 6, 0.5] },
-  { from: [-5, 6, 0.5], to: [0, 9, 1] },
-  { from: [5, 6, 0.5], to: [0, 9, 1] },
-  // Center spine
-  { from: [0, -14, -1.5], to: [0, -8, -2] },
-  { from: [0, -8, -2], to: [0, 2, -1.5] },
+  // Left crown peak intact (accent)
+  { from: [-4, -15, -1.5], to: [-7, -9, 0], c: 1 },
+  { from: [-4, -15, -1.5], to: [-1, -9, -0.5], c: 1 },
+  // Right crown peak (bent sideways — twisted from impact, accent)
+  { from: [5, -13, -1], to: [8, -9, 0.5], c: 1 },
+  { from: [5, -13, -1], to: [2, -9, -0.3], c: 1 },
+  // Crown valley (accent)
+  { from: [-1, -9, -0.5], to: [0, -11, -1], c: 1 },
+  { from: [1, -9, -0.5], to: [0, -11, -1], c: 1 },
+  // Crown base bars
+  { from: [-7, -9, 0], to: [-1, -9, -0.5] },
+  { from: [1, -9, -0.5], to: [7, -9, 0] },
+  // Left wing (intact)
+  { from: [-7, -9, 0], to: [-15, -1, 2] },
+  { from: [-15, -1, 2], to: [-7, 5, 0] },
+  // Left wing strut (accent)
+  { from: [-7, -9, 0], to: [-14, 2, 1.5], c: 1 },
+  // Right wing (compressed inward — vertices pulled in)
+  { from: [7, -9, 0], to: [12, -1, 1.5] },
+  { from: [12, -1, 1.5], to: [6, 4, 0] },
+  // Right wing strut (bent, accent)
+  { from: [7, -9, 0], to: [11, 1, 1], c: 1 },
+  // Bottom W-pattern (right side warped)
+  { from: [-7, 5, 0], to: [-3, 9, 0.5] },
+  { from: [-3, 9, 0.5], to: [0, 5, 0] },
+  { from: [0, 5, 0], to: [3.5, 8.5, 0.5] },
+  { from: [3.5, 8.5, 0.5], to: [6, 4, 0] },
+  // Central diamond (warped — right vertex displaced, accent)
+  { from: [0, -6, -0.5], to: [5, -0.5, -0.3], c: 1 },
+  { from: [5, -0.5, -0.3], to: [0, 4, -0.5], c: 1 },
+  { from: [0, 4, -0.5], to: [-4, -1, -0.5], c: 1 },
+  { from: [-4, -1, -0.5], to: [0, -6, -0.5], c: 1 },
+  // Fracture line through diamond
+  { from: [-2, -3.5, -0.5], to: [3, 1.5, -0.4] },
 ];
 
 // ─── GUARDIAN DAMAGED ───
-// Half the outer diamond gone, braces remain
+// Upper-right diamond displaced (+2,-1) from formation — drifting away. Fracture at break point.
 const GUARDIAN_DAMAGED = [
-  // Outer diamond (partial — top-right and bottom-left only)
-  { from: [0, -11, -1], to: [9, 0, 0.5] },
-  { from: [0, 11, -1], to: [-9, 0, 0.5] },
-  // Inner diamond (intact)
-  { from: [0, -6, 0], to: [5, 0, 0], c: 1 },
-  { from: [5, 0, 0], to: [0, 6, 0], c: 1 },
-  { from: [0, 6, 0], to: [-5, 0, 0], c: 1 },
-  { from: [-5, 0, 0], to: [0, -6, 0], c: 1 },
-  // Remaining braces
-  { from: [0, -6, 0], to: [0, -11, -1] },
-  { from: [5, 0, 0], to: [9, 0, 0.5] },
-  { from: [0, 6, 0], to: [0, 11, -1] },
-  { from: [-5, 0, 0], to: [-9, 0, 0.5] },
-  // Center cross
-  { from: [-5, 0, 0], to: [5, 0, 0], c: 1 },
-  { from: [0, -6, 0], to: [0, 6, 0], c: 1 },
+  // Upper-left diamond (outer — intact)
+  { from: [-3, -5, -1], to: [-8, -10, 0.5] },
+  { from: [-8, -10, 0.5], to: [-13, -5, -1] },
+  { from: [-13, -5, -1], to: [-8, 0, 0.5] },
+  { from: [-8, 0, 0.5], to: [-3, -5, -1] },
+  // Upper-left inner core (accent — intact)
+  { from: [-6, -5, -0.3], to: [-8, -8, 0.3], c: 1 },
+  { from: [-8, -8, 0.3], to: [-10, -5, -0.3], c: 1 },
+  { from: [-10, -5, -0.3], to: [-8, -2, 0.3], c: 1 },
+  { from: [-8, -2, 0.3], to: [-6, -5, -0.3], c: 1 },
+  // Upper-right diamond (outer — DISPLACED +2,-1, bottom edge cracked)
+  { from: [5, -6, -1], to: [10, -11, 0.5] },
+  { from: [10, -11, 0.5], to: [15, -6, -1] },
+  { from: [15, -6, -1], to: [10, -1, 0.5] },
+  // bottom edge: stub (doesn't close cleanly)
+  { from: [6, -4, -0.5], to: [5, -6, -1] },
+  // Upper-right inner core (accent — displaced, slightly warped)
+  { from: [8, -6, -0.3], to: [10, -9, 0.3], c: 1 },
+  { from: [10, -9, 0.3], to: [12, -6, -0.3], c: 1 },
+  { from: [12, -6, -0.3], to: [10, -3, 0.3], c: 1 },
+  { from: [10, -3, 0.3], to: [8, -6, -0.3], c: 1 },
+  // Bottom diamond (outer — intact)
+  { from: [0, 2, -1], to: [5, 7, 0.5] },
+  { from: [5, 7, 0.5], to: [0, 12, -1] },
+  { from: [0, 12, -1], to: [-5, 7, 0.5] },
+  { from: [-5, 7, 0.5], to: [0, 2, -1] },
+  // Bottom inner core (accent — intact)
+  { from: [0, 4.5, -0.3], to: [2.5, 7, 0.3], c: 1 },
+  { from: [2.5, 7, 0.3], to: [0, 9.5, -0.3], c: 1 },
+  { from: [0, 9.5, -0.3], to: [-2.5, 7, 0.3], c: 1 },
+  { from: [-2.5, 7, 0.3], to: [0, 4.5, -0.3], c: 1 },
+  // Left junction (intact)
+  { from: [-3, -5, -1], to: [0, 0, 0], c: 1 },
+  // Right junction (broken — ends short, gap before center)
+  { from: [5, -6, -1], to: [2, -2, -0.5], c: 1 },
+  // Bottom junction (intact)
+  { from: [0, 2, -1], to: [0, 0, 0], c: 1 },
+  // Fracture mark at break point
+  { from: [10, -1, 0.5], to: [6, -4, -0.5] },
 ];
 
 // ─── GUARDIAN CRITICAL ───
-// All outer shield gone, only inner diamond remains
+// Upper-right diamond heavily displaced (+4,-2) and fragmenting. Upper-left cracking. Cores still glow.
 const GUARDIAN_CRITICAL = [
-  { from: [0, -6, 0], to: [5, 0, 0], c: 1 },
-  { from: [5, 0, 0], to: [0, 6, 0], c: 1 },
-  { from: [0, 6, 0], to: [-5, 0, 0], c: 1 },
-  { from: [-5, 0, 0], to: [0, -6, 0], c: 1 },
+  // Upper-left diamond (outer — cracking, one edge broken)
+  { from: [-4, -5, -1], to: [-9, -10, 0.5] },
+  { from: [-9, -10, 0.5], to: [-14, -5, -1] },
+  { from: [-14, -5, -1], to: [-9, 0, 0.5] },
+  // bottom edge broken — stub
+  { from: [-6, -3, -0.5], to: [-4, -5, -1] },
+  // Upper-left inner core (accent — still glowing)
+  { from: [-7, -5, -0.3], to: [-9, -8, 0.3], c: 1 },
+  { from: [-9, -8, 0.3], to: [-11, -5, -0.3], c: 1 },
+  { from: [-11, -5, -0.3], to: [-9, -2, 0.3], c: 1 },
+  { from: [-9, -2, 0.3], to: [-7, -5, -0.3], c: 1 },
+  // Upper-right diamond (heavily displaced +4,-2 — fragmenting, only 2 outer sides)
+  { from: [7, -7, -1], to: [12, -12, 0.5] },
+  { from: [12, -12, 0.5], to: [17, -7, -1] },
+  // Upper-right inner core fragment (accent — distorted, 2 sides only)
+  { from: [10, -7, -0.3], to: [12, -10, 0.3], c: 1 },
+  { from: [12, -10, 0.3], to: [14, -7, -0.3], c: 1 },
+  // Bottom diamond (outer — intact but stressed)
+  { from: [0, 2, -1], to: [5, 7, 0.5] },
+  { from: [5, 7, 0.5], to: [0, 12, -1] },
+  { from: [0, 12, -1], to: [-5, 7, 0.5] },
+  { from: [-5, 7, 0.5], to: [0, 2, -1] },
+  // Bottom inner core (accent — intact)
+  { from: [0, 4.5, -0.3], to: [2.5, 7, 0.3], c: 1 },
+  { from: [2.5, 7, 0.3], to: [0, 9.5, -0.3], c: 1 },
+  { from: [0, 9.5, -0.3], to: [-2.5, 7, 0.3], c: 1 },
+  { from: [-2.5, 7, 0.3], to: [0, 4.5, -0.3], c: 1 },
+  // Junction stubs (all broken short)
+  { from: [-4, -5, -1], to: [-2, -2.5, -0.5], c: 1 },
+  { from: [0, 2, -1], to: [0, 0.5, -0.5], c: 1 },
 ];
 
 // Damaged model lookup: { type: [damageLevel1Model, damageLevel2Model, ...] }
