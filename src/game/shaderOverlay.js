@@ -315,16 +315,16 @@ vec3 vectorColorGrade(vec3 src) {
   vec3 hsv = rgb2hsv(src);
   float sat = hsv.y;
 
-  // Unsaturated content (ship white, flashes) → blue phosphor with white-hot core
+  // Unsaturated content (ship white, flashes) → blue phosphor fading to true white at high brightness
   if (sat < 0.12) {
     float e = pow(l, 1.1);
     float r = e * 0.3;
     float g = e * 0.85;
     float b = e * 1.0;
-    if (e > 0.8) {
-      float hotness = (e - 0.8) / 0.2;
-      r += hotness * 0.5;
-      g += hotness * 0.1;
+    if (e > 0.4) {
+      float hotness = smoothstep(0.4, 1.0, e);
+      r = mix(r, e, hotness);
+      g = mix(g, e, hotness);
     }
     return vec3(r, g, b);
   }

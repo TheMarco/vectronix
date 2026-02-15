@@ -378,7 +378,9 @@ export class GameScene extends Phaser.Scene {
         if (this.cursors.left.isDown) inputDir = -1;
         else if (this.cursors.right.isDown) inputDir = 1;
       }
-      firePressed = Phaser.Input.Keyboard.JustDown(this.fireKey) || Phaser.Input.Keyboard.JustDown(this.fireKey2);
+      if (!this.gameOver) {
+        firePressed = Phaser.Input.Keyboard.JustDown(this.fireKey) || Phaser.Input.Keyboard.JustDown(this.fireKey2);
+      }
     }
 
     // ─── UPDATE ───
@@ -749,9 +751,17 @@ export class GameScene extends Phaser.Scene {
 
   _drawPlayerShip(item) {
     const lines = projectModelFlat(PLAYER_SHIP, item.screenX, item.screenY, item.scale * 1.9);
+    // Draw accents first, then white on top
     for (const line of lines) {
-      const col = line.c ? CONFIG.COLORS.PLAYER_COCKPIT : CONFIG.COLORS.PLAYER;
+      if (line.c === 1) continue;
+      const col = line.c === 3 ? CONFIG.COLORS.PLAYER_RED
+        : line.c === 2 ? CONFIG.COLORS.PLAYER_BLUE
+        : CONFIG.COLORS.PLAYER;
       drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
+    }
+    for (const line of lines) {
+      if (line.c !== 1) continue;
+      drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, CONFIG.COLORS.PLAYER_WHITE);
     }
 
     // Dual nacelle thrust (nacelle centers at ±5.5 model units, bottom at y=9)

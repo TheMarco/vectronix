@@ -39,11 +39,14 @@ export class TitleScene extends Phaser.Scene {
 
     this.startKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
     this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.startKey.reset();
+    this.spaceKey.reset();
 
     this._time = 0;
     this._started = false;
     this._idleTimer = 0;
     this._demoLaunched = false;
+    this._inputCooldown = 0.3; // prevent carry-over from demo exit keypress
 
     // Logo image — source is 2752px wide, fit to ~500px display width
     this._logo = this.add.image(CX, 155, 'logo');
@@ -103,13 +106,21 @@ export class TitleScene extends Phaser.Scene {
       this.soundEngine.playTitlePulse();
     }
 
+    // Input cooldown (prevents carry-over from demo exit)
+    if (this._inputCooldown > 0) {
+      this._inputCooldown -= dt;
+      // Drain any stale JustDown states during cooldown
+      Phaser.Input.Keyboard.JustDown(this.startKey);
+      Phaser.Input.Keyboard.JustDown(this.spaceKey);
+    }
+
     // Any key press resets idle timer
     if (!this._started && this.input.keyboard.keys.some(k => k && k.isDown)) {
       this._idleTimer = 0;
     }
 
     // Start game
-    if (!this._started &&
+    if (!this._started && this._inputCooldown <= 0 &&
         (Phaser.Input.Keyboard.JustDown(this.startKey) ||
          Phaser.Input.Keyboard.JustDown(this.spaceKey))) {
       this._started = true;
@@ -230,8 +241,15 @@ export class TitleScene extends Phaser.Scene {
       const shipScale = 1.6;
       const lines = projectModelFlat(PLAYER_SHIP, CX, shipY, shipScale);
       for (const line of lines) {
-        const col = line.c ? CONFIG.COLORS.PLAYER_COCKPIT : CONFIG.COLORS.PLAYER;
+        if (line.c === 1) continue;
+        const col = line.c === 3 ? CONFIG.COLORS.PLAYER_RED
+          : line.c === 2 ? CONFIG.COLORS.PLAYER_BLUE
+          : CONFIG.COLORS.PLAYER;
         drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
+      }
+      for (const line of lines) {
+        if (line.c !== 1) continue;
+        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, CONFIG.COLORS.PLAYER_WHITE);
       }
       // Dual nacelle thrust
       const flicker = Math.sin(this._time * 12) * 0.3 + 0.7;

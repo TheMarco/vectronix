@@ -11,53 +11,54 @@
 
 // ─── PLAYER SHIP ───
 // Sci-fi fighter: tall nose spike, elongated fuselage, swept wings, twin engine nacelles, cockpit canopy.
+// Color keys: 0 = green accent, 1 = white (primary), 2 = blue accent
 export const PLAYER_SHIP = [
-  // ── Nose spike ──
-  { from: [0, -14, -1.5], to: [-2, -9, 0] },
-  { from: [0, -14, -1.5], to: [2, -9, 0] },
+  // ── Nose spike (white) ──
+  { from: [0, -14, -1.5], to: [-2, -9, 0], c: 1 },
+  { from: [0, -14, -1.5], to: [2, -9, 0], c: 1 },
 
-  // ── Fuselage (elongated central body) ──
+  // ── Fuselage (white) ──
   // Upper fuselage: nose base widens to shoulders
-  { from: [-2, -9, 0], to: [-3, -3, 0.3] },
-  { from: [2, -9, 0], to: [3, -3, 0.3] },
+  { from: [-2, -9, 0], to: [-3, -3, 0.3], c: 1 },
+  { from: [2, -9, 0], to: [3, -3, 0.3], c: 1 },
   // Mid fuselage: parallel sides
-  { from: [-3, -3, 0.3], to: [-3, 3, 0.3] },
-  { from: [3, -3, 0.3], to: [3, 3, 0.3] },
-  // Lower fuselage: taper to tail
-  { from: [-3, 3, 0.3], to: [-1.5, 7, 0] },
-  { from: [3, 3, 0.3], to: [1.5, 7, 0] },
-  // Tail bar
-  { from: [-1.5, 7, 0], to: [1.5, 7, 0] },
+  { from: [-3, -3, 0.3], to: [-3, 3, 0.3], c: 1 },
+  { from: [3, -3, 0.3], to: [3, 3, 0.3], c: 1 },
+  // Lower fuselage: taper to tail (red accent)
+  { from: [-3, 3, 0.3], to: [-1.5, 7, 0], c: 3 },
+  { from: [3, 3, 0.3], to: [1.5, 7, 0], c: 3 },
+  // Tail bar (red accent)
+  { from: [-1.5, 7, 0], to: [1.5, 7, 0], c: 3 },
 
-  // ── Cockpit canopy (secondary color — pink/magenta) ──
-  { from: [0, -6, -0.5], to: [-1.5, -4, -0.5], c: 1 },
-  { from: [0, -6, -0.5], to: [1.5, -4, -0.5], c: 1 },
-  { from: [-1.5, -4, -0.5], to: [-1, -2.5, -0.5], c: 1 },
-  { from: [1.5, -4, -0.5], to: [1, -2.5, -0.5], c: 1 },
-  { from: [-1, -2.5, -0.5], to: [1, -2.5, -0.5], c: 1 },
+  // ── Cockpit canopy (blue accent) ──
+  { from: [0, -6, -0.5], to: [-1.5, -4, -0.5], c: 2 },
+  { from: [0, -6, -0.5], to: [1.5, -4, -0.5], c: 2 },
+  { from: [-1.5, -4, -0.5], to: [-1, -2.5, -0.5], c: 2 },
+  { from: [1.5, -4, -0.5], to: [1, -2.5, -0.5], c: 2 },
+  { from: [-1, -2.5, -0.5], to: [1, -2.5, -0.5], c: 2 },
 
-  // ── Wings ──
+  // ── Wings (white) ──
   // Wing sweep out from fuselage shoulder
-  { from: [-3, -2, 0.5], to: [-11, 3, 1.5] },
-  { from: [3, -2, 0.5], to: [11, 3, 1.5] },
-  // Wing step (notch inward)
-  { from: [-11, 3, 1.5], to: [-9, 5, 1] },
-  { from: [11, 3, 1.5], to: [9, 5, 1] },
+  { from: [-3, -2, 0.5], to: [-11, 3, 1.5], c: 1 },
+  { from: [3, -2, 0.5], to: [11, 3, 1.5], c: 1 },
+  // Wing step
+  { from: [-11, 3, 1.5], to: [-9, 5, 1], c: 1 },
+  { from: [11, 3, 1.5], to: [9, 5, 1], c: 1 },
   // Wing trailing edge to nacelle outer wall
-  { from: [-9, 5, 1], to: [-6.5, 3, 0.5] },
-  { from: [9, 5, 1], to: [6.5, 3, 0.5] },
+  { from: [-9, 5, 1], to: [-6.5, 3, 0.5], c: 1 },
+  { from: [9, 5, 1], to: [6.5, 3, 0.5], c: 1 },
 
-  // ── Engine nacelles (twin rectangular pods) ──
+  // ── Engine nacelles (blue accent) ──
   // Left nacelle
-  { from: [-4.5, 2, 0.5], to: [-6.5, 2, 0.5] },
-  { from: [-6.5, 2, 0.5], to: [-6.5, 9, 0.5] },
-  { from: [-6.5, 9, 0.5], to: [-4.5, 9, 0.5] },
-  { from: [-4.5, 9, 0.5], to: [-4.5, 2, 0.5] },
+  { from: [-4.5, 2, 0.5], to: [-6.5, 2, 0.5], c: 2 },
+  { from: [-6.5, 2, 0.5], to: [-6.5, 9, 0.5], c: 2 },
+  { from: [-6.5, 9, 0.5], to: [-4.5, 9, 0.5], c: 2 },
+  { from: [-4.5, 9, 0.5], to: [-4.5, 2, 0.5], c: 2 },
   // Right nacelle
-  { from: [4.5, 2, 0.5], to: [6.5, 2, 0.5] },
-  { from: [6.5, 2, 0.5], to: [6.5, 9, 0.5] },
-  { from: [6.5, 9, 0.5], to: [4.5, 9, 0.5] },
-  { from: [4.5, 9, 0.5], to: [4.5, 2, 0.5] },
+  { from: [4.5, 2, 0.5], to: [6.5, 2, 0.5], c: 2 },
+  { from: [6.5, 2, 0.5], to: [6.5, 9, 0.5], c: 2 },
+  { from: [6.5, 9, 0.5], to: [4.5, 9, 0.5], c: 2 },
+  { from: [4.5, 9, 0.5], to: [4.5, 2, 0.5], c: 2 },
 ];
 
 // ─── GRUNT ───

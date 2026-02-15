@@ -104,9 +104,11 @@ export const CONFIG = Object.freeze({
   // Colors
   COLORS: {
     BG: 0x000000,
-    PLAYER: 0x44ff66,
-    PLAYER_COCKPIT: 0xff44aa,
-    PLAYER_THRUST: 0x44ff66,
+    PLAYER: 0xffffff,
+    PLAYER_WHITE: 0xffffff,
+    PLAYER_BLUE: 0x44aaff,
+    PLAYER_RED: 0xff4444,
+    PLAYER_THRUST: 0x44aaff,
     GRUNT: 0x44ff66,
     ATTACKER: 0xff6644,
     COMMANDER: 0xffdd44,
