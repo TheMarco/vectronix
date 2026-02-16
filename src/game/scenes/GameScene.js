@@ -180,16 +180,8 @@ export class GameScene extends Phaser.Scene {
       this._freezeTimer = 0.2;
       this._freezePendingExplosion = { x: this.player.x, y: this.player.y };
       this.soundEngine.playPlayerDeath();
-      if (this.player.isGameOver) {
-        this.gameOver = true;
-        // Save high score
-        try {
-          const prev = parseInt(localStorage.getItem('vectronix-highscore') || '0', 10);
-          if (this.score > prev) {
-            localStorage.setItem('vectronix-highscore', String(this.score));
-          }
-        } catch (e) {}
-      }
+      // Game over check deferred to after _checkExtraLife() to avoid
+      // race condition where a life is earned and lost in the same frame
     };
     this.collisionSystem.onDualHit = () => {
       this.explosionRenderer.spawn(
@@ -217,15 +209,7 @@ export class GameScene extends Phaser.Scene {
         this.waveSystem.capturePlayer(boss, this.player.x, this.player.y);
         this.soundEngine.playCapture();
         this._shakeAmount = 8;
-        if (this.player.isGameOver) {
-          this.gameOver = true;
-          try {
-            const prev = parseInt(localStorage.getItem('vectronix-highscore') || '0', 10);
-            if (this.score > prev) {
-              localStorage.setItem('vectronix-highscore', String(this.score));
-            }
-          } catch (e) {}
-        }
+        // Game over check deferred to after _checkExtraLife()
       }
     };
     this.collisionSystem.onCapturedShipHit = (cs) => {
@@ -677,8 +661,20 @@ export class GameScene extends Phaser.Scene {
         if (this._timeFreezeTimer <= 0) this._timeFreezeTimer = 0;
       }
 
-      // Extra life check
+      // Extra life check (must run before game over check)
       this._checkExtraLife();
+
+      // Deferred game over check — after extra life so a life earned
+      // in the same frame as death isn't wasted
+      if (!this.gameOver && this.player.isGameOver) {
+        this.gameOver = true;
+        try {
+          const prev = parseInt(localStorage.getItem('vectronix-highscore') || '0', 10);
+          if (this.score > prev) {
+            localStorage.setItem('vectronix-highscore', String(this.score));
+          }
+        } catch (e) {}
+      }
 
       // Wave transition
       if (this.waveSystem.waveComplete && this.waveSystem.waveTransitionTimer <= 0) {

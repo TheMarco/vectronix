@@ -101,7 +101,7 @@ export class HUD {
 
   update(dt, score, lives, waveNumber, gameOver, demoMode = false, stats = null) {
     this.scoreText.setText(`SCORE ${score}`);
-    this.livesText.setText('SHIPS ' + '\u25C6'.repeat(Math.max(0, lives - 1)));
+    this.livesText.setText('SHIPS ' + '\u25C6'.repeat(Math.max(0, lives)));
     this.waveText.setText(`WAVE ${waveNumber}`);
 
     if (this.centerMsgTimer > 0) {
