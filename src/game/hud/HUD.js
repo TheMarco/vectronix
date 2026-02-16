@@ -16,7 +16,7 @@ export class HUD {
 
     this.scoreText = scene.add.text(20, 8, 'SCORE 0', style).setDepth(10);
     this.livesText = scene.add.text(CONFIG.WIDTH - 20, 8, '', style).setDepth(10).setOrigin(1, 0);
-    this.waveText = scene.add.text(CONFIG.CENTER_X, 8, '', { ...style, fontSize: '30px' }).setDepth(10).setOrigin(0.5, 0);
+    this.waveText = scene.add.text(CONFIG.CENTER_X + 36, 8, '', { ...style, fontSize: '30px' }).setDepth(10).setOrigin(0.5, 0);
 
     this.centerMsg = scene.add.text(CONFIG.CENTER_X, CONFIG.CENTER_Y - 70, '', {
       ...style,

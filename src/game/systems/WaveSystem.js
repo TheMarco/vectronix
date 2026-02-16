@@ -6,6 +6,7 @@ import {
   CHALLENGE_LAYOUTS,
   createTractorBeamDive,
   createGroupDivePaths,
+  createRamDive,
 } from '../entities/DivePaths.js';
 import { CapturedShip } from '../entities/CapturedShip.js';
 
@@ -195,6 +196,12 @@ export class WaveSystem {
     // Boss predictive aim tracking
     this._prevPlayerX = 384;
     this._playerVX = 0;
+
+    // Adaptive dive pressure (set by GameScene each frame)
+    this.performanceProfile = { accuracy: 0, timeAlive: 0 };
+
+    // Risk multiplier (set by GameScene each frame)
+    this.riskMultiplier = 1.0;
   }
 
   get allEnemiesDead() {
@@ -240,18 +247,23 @@ export class WaveSystem {
     const templateIndex = (this.waveNumber - 1) % normalTemplates.length;
     const template = normalTemplates[templateIndex];
 
-    // Speed escalation per cycle
+    // Speed escalation per cycle — steeper curve
     const cycle = Math.floor((this.waveNumber - 1) / normalTemplates.length);
-    this.speedMultiplier = 1.0 + cycle * 0.10;
-    this.diveInterval = Math.max(1800, template.diveInterval - cycle * 200);
+    this.speedMultiplier = 1.0 + cycle * 0.18;
+    this.diveInterval = Math.max(1200, template.diveInterval - cycle * 450);
 
     for (let i = 0; i < template.enemies.length; i++) {
       const [row, col, type] = template.enemies[i];
       const enemy = new Enemy(type, row, col);
+      // Boss behavior evolution: assign type based on cycle
+      if (enemy.isBoss) {
+        enemy.behaviorType = Math.floor((this.waveNumber - 1) / 3) % 4;
+      }
+      const entranceGroup = Math.floor(i / 4);
+      enemy.entranceGroup = entranceGroup;
       this.enemies.push(enemy);
 
       const slot = formation.getSlotPosition(row, col);
-      const entranceGroup = Math.floor(i / 4);
       const posInGroup = i % 4;
       const pathIndex = (entranceGroup + this.waveNumber) % ENTRANCE_PATHS.length;
       const pathFn = ENTRANCE_PATHS[pathIndex];
@@ -341,7 +353,7 @@ export class WaveSystem {
       let count = 0;
       for (let i = 0; i < this.enemies.length; i++) {
         const e = this.enemies[i];
-        if (e.alive && (e.state === 'holding' || e.state === 'returning' || e.state === 're-entering')) {
+        if (e.alive && (e.state === 'holding' || e.state === 'pre_dive' || e.state === 'returning' || e.state === 're-entering')) {
           if (count < slots.length) {
             slots[count].row = e.row;
             slots[count].col = e.col;
@@ -372,7 +384,7 @@ export class WaveSystem {
 
         // Enemy fires during dive — type-specific shot counts and patterns
         if (enemy.state === 'diving') {
-          const waveShots = Math.min(4, 1 + Math.floor(this.waveNumber / 4));
+          const waveShots = Math.min(6, 1 + Math.floor(this.waveNumber / 3));
           let maxShots;
           switch (enemy.type) {
             case 'grunt':    maxShots = waveShots; break;
@@ -395,7 +407,8 @@ export class WaveSystem {
                   bulletManager.fireEnemyAimed(enemy.x, enemy.y, enemy.z, playerX, playerY);
                   break;
                 case 'boss':
-                  if (enemy.bossPhase === 2) {
+                  if (enemy.bossPhase === 2 || enemy.behaviorType === 3) {
+                    // Phase 2 and Hunter bosses use predictive aim
                     bulletManager.fireEnemyAimedPredictive(enemy.x, enemy.y, enemy.z, playerX, playerY, this._playerVX);
                   } else {
                     bulletManager.fireEnemyAimed(enemy.x, enemy.y, enemy.z, playerX, playerY);
@@ -429,9 +442,19 @@ export class WaveSystem {
     // Trigger dive attacks (normal waves only)
     if (!this.isChallenge) {
       this.diveTimer += dtMs;
-      if (this.diveTimer >= this.diveInterval) {
-        this.diveTimer -= this.diveInterval;
-        this._triggerDive(playerX, playerDual);
+      // Adaptive pressure: skilled players get faster dives
+      let pressureFactor = 1.0;
+      const { accuracy, timeAlive } = this.performanceProfile;
+      if (accuracy > 0.75 && timeAlive > 35) {
+        pressureFactor = 0.6;
+      } else if (accuracy > 0.65 && timeAlive > 20) {
+        pressureFactor = 0.75;
+      }
+      const effectiveInterval = this.diveInterval * pressureFactor;
+
+      if (this.diveTimer >= effectiveInterval) {
+        this.diveTimer -= effectiveInterval;
+        this._triggerDive(playerX, playerDual, pressureFactor);
       }
     }
 
@@ -518,16 +541,22 @@ export class WaveSystem {
     return true;
   }
 
-  _triggerDive(playerX, playerDual = false) {
+  _triggerDive(playerX, playerDual = false, pressureFactor = 1.0) {
     const holding = this.holdingEnemies;
     if (holding.length === 0) return;
 
     // Group formation dive chance — increases with wave number
+    // Adaptive pressure boost when player is performing well
     if (!playerDual) {
       let groupChance = 0;
-      if (this.waveNumber >= 12) groupChance = 0.30;
+      if (this.waveNumber >= 18) groupChance = 0.45;
+      else if (this.waveNumber >= 12) groupChance = 0.35;
       else if (this.waveNumber >= 9) groupChance = 0.20;
       else if (this.waveNumber >= 8) groupChance = 0.10;
+
+      if (pressureFactor < 0.8) {
+        groupChance = Math.min(0.6, groupChance + 0.05);
+      }
 
       if (groupChance > 0 && Math.random() < groupChance) {
         if (this._triggerGroupDive(playerX)) return;
@@ -544,16 +573,23 @@ export class WaveSystem {
     if (holding.length === 0) return;
 
     // Prioritize bosses — if a boss is holding, always include it first
+    // behaviorType 1 (aggressor) and 2 (commander) dive more aggressively
     if (!playerDual) {
       const bossIdx = holding.findIndex(e => e.isBoss && !e.capturedShip);
-      if (bossIdx !== -1 && Math.random() < 0.45) {
-        const [boss] = holding.splice(bossIdx, 1);
-        holding.unshift(boss);
+      if (bossIdx !== -1) {
+        let bossChance = 0.45;
+        const boss = holding[bossIdx];
+        if (boss.behaviorType === 1) bossChance += 0.25; // Aggressor: +25% escort chance
+        if (boss.behaviorType === 2) bossChance += 0.15; // Commander: increased dive frequency
+        if (Math.random() < bossChance) {
+          holding.splice(bossIdx, 1);
+          holding.unshift(boss);
+        }
       }
     }
 
-    // Pick 1-3 enemies to dive — more at higher waves
-    const maxDivers = this.waveNumber >= 9 ? 3 : (this.waveNumber >= 4 ? 2 : 1);
+    // Pick 1-4 enemies to dive — more at higher waves
+    const maxDivers = this.waveNumber >= 18 ? 4 : this.waveNumber >= 9 ? 3 : (this.waveNumber >= 4 ? 2 : 1);
     const count = Math.min(holding.length, Math.random() < 0.3 ? maxDivers : Math.max(1, maxDivers - 1));
     for (let i = 0; i < count; i++) {
       if (holding.length === 0) break;
@@ -563,8 +599,10 @@ export class WaveSystem {
 
       // Boss: tractor beam dive if no captured ship, player isn't dual,
       // no abduction already in progress, and no ship already captured
+      // behaviorType 2 (commander) reduces tractor usage by 50%
       if (enemy.isBoss && !enemy.capturedShip && !playerDual &&
           this.capturedShips.length === 0 &&
+          !(enemy.behaviorType === 2 && Math.random() < 0.5) &&
           !this.enemies.some(e => e.alive && (
             e.state === 'tractor_diving' ||
             e.state === 'tractor_beaming' ||
@@ -572,6 +610,10 @@ export class WaveSystem {
           ))) {
         const path = createTractorBeamDive(enemy.x, enemy.y, playerX);
         enemy.startTractorDive(path);
+        // Aggressor: reduce tractor cooldown by 20% (beam duration shortened)
+        if (enemy.behaviorType === 1) {
+          enemy.beamTimer = Math.round(CONFIG.BEAM_DURATION * 0.8);
+        }
         if (this.onTractorBeam) this.onTractorBeam();
         continue;
       }
@@ -624,19 +666,26 @@ export class WaveSystem {
           diveSpeed = 0.17 + this.speedMultiplier * 0.03;
           pathIdx = (this.waveNumber + enemy.col) % 2 === 0 ? 2 : 6; // zigzag or feint
           break;
-        case 'guardian':
-          diveSpeed = 0.12 + this.speedMultiplier * 0.03; // slow, deliberate
-          pathIdx = (this.waveNumber + enemy.col) % 2 === 0 ? 3 : 5; // loop or s-curve
-          break;
+        case 'guardian': {
+          diveSpeed = 0.12 + this.speedMultiplier * 0.03; // slow, deliberate ram
+          const ramPath = createRamDive(enemy.x, enemy.y, playerX);
+          enemy.startDive(ramPath, diveSpeed);
+          if (this.onDive) this.onDive();
+          continue; // skip generic path creation below
+        }
         case 'commander':
           diveSpeed = 0.17 + this.speedMultiplier * 0.03;
           pathIdx = (enemy.row + enemy.col + this.waveNumber) % DIVE_PATHS.length;
           break;
-        case 'boss':
+        case 'boss': {
           diveSpeed = 0.14 + this.speedMultiplier * 0.03; // menacing, slow
           if (enemy.bossPhase === 2) diveSpeed *= 1.15;
+          // Boss behavior evolution
+          if (enemy.behaviorType === 1) diveSpeed *= 1.1;        // Aggressor: faster dives
+          if (enemy.behaviorType === 3 && this.riskMultiplier > 2.0) diveSpeed *= 1.15; // Hunter: punish risk
           pathIdx = (this.waveNumber + enemy.col) % 2 === 0 ? 0 : 7; // swoop or peel-off
           break;
+        }
         default:
           diveSpeed = 0.18 + this.speedMultiplier * 0.05;
           pathIdx = (enemy.row + enemy.col + this.waveNumber) % DIVE_PATHS.length;

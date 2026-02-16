@@ -419,6 +419,41 @@ export function createGroupDivePaths(enemies, playerX, formationType) {
   });
 }
 
+/**
+ * DIVE TYPE 9: Ram
+ * Guardian-only: slow, heavy descent aimed straight at the player, exits off the bottom.
+ * No evasion, no curve — pure battering ram.
+ */
+export function createRamDive(startX, startY, playerX) {
+  // Aim slightly ahead of player position with small lateral drift
+  const targetX = playerX + (startX > CONFIG.CENTER_X ? -20 : 20);
+  const exitY = CONFIG.HEIGHT + 80;
+
+  return function(t) {
+    let x, y, z;
+    if (t < 0.15) {
+      // Brief forward lurch — z drops toward camera to signal intent
+      const lt = smoothstep(t / 0.15);
+      x = startX;
+      y = startY;
+      z = lerp(CONFIG.FORMATION_Z, CONFIG.FORMATION_Z - 4, lt);
+    } else if (t < 0.85) {
+      // Main descent: straight line toward player, then through the bottom
+      const lt = smoothstep((t - 0.15) / 0.7);
+      x = lerp(startX, targetX, lt);
+      y = lerp(startY, exitY, lt);
+      z = lerp(CONFIG.FORMATION_Z - 4, -8, lt);
+    } else {
+      // Continue off-screen
+      const lt = (t - 0.85) / 0.15;
+      x = targetX;
+      y = exitY + lt * 60;
+      z = -8;
+    }
+    return { x, y, z };
+  };
+}
+
 // All dive path generators for random selection
 export const DIVE_PATHS = [
   createSwoopDive,

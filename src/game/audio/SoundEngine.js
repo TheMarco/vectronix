@@ -17,6 +17,7 @@ export class SoundEngine {
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.value = 0.4;
       this.masterGain.connect(this.ctx.destination);
+
       this.initialized = true;
     } catch (e) {
       console.warn('Web Audio not available');

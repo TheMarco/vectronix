@@ -101,6 +101,16 @@ export const CONFIG = Object.freeze({
   DUAL_FIRE_COOLDOWN: 0.10,   // seconds between dual shots
   DUAL_MAX_BULLETS: 8,        // double the single max when dual
 
+  // Risk-based multiplier
+  RISK: {
+    CENTER_ZONE: 80,
+    EDGE_BREAK_ZONE: 180,
+    BUILD_INTERVAL: 400,        // ms between multiplier increments
+    MAX_MULTIPLIER: 3.0,
+    RETREAT_BREAK_TIME: 1500,   // ms at edge before multiplier resets
+    NO_DIVE_BREAK_TIME: 2500,   // ms with no diving enemies before reset
+  },
+
   // Colors
   COLORS: {
     BG: 0x000000,

@@ -27,6 +27,7 @@ export class Enemy {
     this.col = col;
     this.state = 'queued';
     this.alive = true;
+    this.entranceGroup = -1; // set by WaveSystem
 
     // HP system
     this.maxHp = Enemy.HP_TABLE[type] || 1;
@@ -71,6 +72,8 @@ export class Enemy {
 
     // Boss phase shift
     this.bossPhase = 1;
+    // Boss behavior type (0=standard, 1=aggressor, 2=commander, 3=hunter)
+    this.behaviorType = 0;
 
     // Score
     this.scoreValue = this._getScore(false);
@@ -126,6 +129,10 @@ export class Enemy {
     return ((Math.min(255, r + 80) << 16) | (Math.max(0, g - 40) << 8) | Math.max(0, b - 40)) >>> 0;
   }
 
+  get isPreDive() {
+    return this.state === 'pre_dive';
+  }
+
   get isDiving() {
     return this.state === 'diving' || this.state === 'tractor_diving' ||
            this.state === 'tractor_beaming' || this.state === 'tractor_capturing';
@@ -168,6 +175,7 @@ export class Enemy {
   }
 
   kill() {
+    this.killedInState = this.state;
     this.alive = false;
     this.state = 'dead';
   }
@@ -196,8 +204,13 @@ export class Enemy {
     this.divePath = path;
     this.diveT = 0;
     this.diveSpeed = speed;
-    this.state = 'diving';
     this.diveShots = 0;
+
+    // Pre-dive visual tell
+    this.state = 'pre_dive';
+    this.preDiveTimer = 0;
+    this.preDiveDuration = 300 + Math.random() * 150; // 300-450ms
+    this._preDiveStartZ = this.z;
   }
 
   startTractorDive(path) {
@@ -261,6 +274,23 @@ export class Enemy {
         this.x = formationX;
         this.y = formationY;
         this.z = formationZ;
+        break;
+      }
+
+      case 'pre_dive': {
+        this.preDiveTimer += dt * 1000;
+        const t = Math.min(1, this.preDiveTimer / this.preDiveDuration);
+
+        // Lerp z from formation depth (12) toward 9
+        this.z = this._preDiveStartZ + (9 - this._preDiveStartZ) * t;
+        // Stay at formation x/y with small horizontal jitter
+        this.x = formationX + (Math.random() - 0.5) * 6;
+        this.y = formationY;
+
+        if (this.preDiveTimer >= this.preDiveDuration) {
+          this.state = 'diving';
+          this.z = formationZ; // reset z before dive path takes over
+        }
         break;
       }
 
