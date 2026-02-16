@@ -97,7 +97,7 @@ export const CONFIG = Object.freeze({
   CAPTURED_SHIP_Y_OFFSET: -24, // attached ship offset ABOVE boss
 
   // Dual fighter
-  DUAL_OFFSET_X: 14,          // px offset per ship from center
+  DUAL_OFFSET_X: 13,          // px offset per ship from center
   DUAL_FIRE_COOLDOWN: 0.10,   // seconds between dual shots
   DUAL_MAX_BULLETS: 8,        // double the single max when dual
 

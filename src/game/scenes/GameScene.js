@@ -639,7 +639,7 @@ export class GameScene extends Phaser.Scene {
             const cy = b.prevY + t * aby - this._ufo.y;
             dist2 = cx * cx + cy * cy;
           }
-          if (dist2 < ufoR2) {
+          if (dist2 <= ufoR2) {
             b.alive = false;
             this._ufo.alive = false;
             if (this._ufoSound) { this._ufoSound.stop(); this._ufoSound = null; }

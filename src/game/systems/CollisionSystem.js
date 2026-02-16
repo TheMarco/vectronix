@@ -81,7 +81,7 @@ export class CollisionSystem {
         const eScale = getScale(enemy.z);
         const hitDist = BULLET_HIT_RADIUS + ENEMY_HIT_RADIUS * eScale;
         const dist = sqDistSegmentToPoint(bsPrev.x, bsPrev.y, bs.x, bs.y, es.x, es.y);
-        if (dist < hitDist * hitDist) {
+        if (dist <= hitDist * hitDist) {
           // Spinner deflection: check if a spoke is pointing downward
           if (enemy.type === 'spinner' && this._spinnerDeflects(enemy)) {
             bullet.alive = false;
@@ -112,7 +112,7 @@ export class CollisionSystem {
           const csScale = getScale(cs.z || 0);
           const hitDist = BULLET_HIT_RADIUS + PLAYER_HIT_RADIUS * csScale;
           const dist = sqDistSegmentToPoint(bsPrev.x, bsPrev.y, bs.x, bs.y, css.x, css.y);
-          if (dist < hitDist * hitDist) {
+          if (dist <= hitDist * hitDist) {
             bullet.alive = false;
             cs.kill();
             // Remove reference from boss
@@ -131,7 +131,7 @@ export class CollisionSystem {
       const bsPrev = screenXY(bullet.prevX, bullet.prevY, bullet.z);
       const hitDist = (BULLET_HIT_RADIUS + PLAYER_HIT_RADIUS);
       const dist = sqDistSegmentToPoint(bsPrev.x, bsPrev.y, bs.x, bs.y, ps.x, ps.y);
-      if (dist < hitDist * hitDist) {
+      if (dist <= hitDist * hitDist) {
         bullet.alive = false;
         const wasDual = player.dualFighter;
         const hadShield = player.shieldActive;
@@ -158,7 +158,7 @@ export class CollisionSystem {
       const dy = es.y - ps.y;
       const dist = dx * dx + dy * dy;
       const hitDist = (ENEMY_HIT_RADIUS + PLAYER_HIT_RADIUS);
-      if (dist < hitDist * hitDist) {
+      if (dist <= hitDist * hitDist) {
         enemy.kill();
         if (this.onEnemyKilled) this.onEnemyKilled(enemy);
         const wasDual2 = player.dualFighter;
@@ -209,7 +209,7 @@ export class CollisionSystem {
         const eScale = getScale(enemy.z);
         const hitDist = BULLET_HIT_RADIUS + ENEMY_HIT_RADIUS * eScale;
         const dist = sqDistSegmentToPoint(bsPrev.x, bsPrev.y, bs.x, bs.y, es.x, es.y);
-        if (dist < hitDist * hitDist) {
+        if (dist <= hitDist * hitDist) {
           if (enemy.type === 'spinner' && this._spinnerDeflects(enemy)) {
             bullet.alive = false;
             if (this.onBulletDeflected) this.onBulletDeflected(enemy);
