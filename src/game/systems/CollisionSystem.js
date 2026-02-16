@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { projectPoint } from '../rendering/Projection.js';
+import { projectPoint, getScale } from '../rendering/Projection.js';
 
 /**
  * Collision detection between:
@@ -9,6 +9,9 @@ import { projectPoint } from '../rendering/Projection.js';
  *
  * All checks use screen-space positions (projected from world z)
  * so collisions match what the player sees on screen.
+ *
+ * Bullet→target checks use swept collision (segment vs circle)
+ * to prevent tunneling at high relative velocities / low framerates.
  */
 
 const ENEMY_HIT_RADIUS = 10;
@@ -20,6 +23,31 @@ function screenXY(wx, wy, wz) {
   if (wz === 0) return { x: wx, y: wy };
   const p = projectPoint(wx, wy, wz);
   return { x: p.x, y: p.y };
+}
+
+/**
+ * Swept collision: test if the line segment (ax,ay)→(bx,by)
+ * passes within `radius` of the point (cx,cy).
+ * Returns squared distance from closest point on segment to circle center,
+ * or Infinity if no segment exists (degenerate).
+ */
+function sqDistSegmentToPoint(ax, ay, bx, by, cx, cy) {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const acx = cx - ax;
+  const acy = cy - ay;
+  const ab2 = abx * abx + aby * aby;
+  if (ab2 === 0) {
+    // Degenerate segment (bullet didn't move) — point-vs-point
+    return acx * acx + acy * acy;
+  }
+  // Project point onto segment, clamped to [0,1]
+  const t = Math.max(0, Math.min(1, (acx * abx + acy * aby) / ab2));
+  const closestX = ax + t * abx;
+  const closestY = ay + t * aby;
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  return dx * dx + dy * dy;
 }
 
 export class CollisionSystem {
@@ -40,18 +68,19 @@ export class CollisionSystem {
     const playerBullets = bulletManager.bullets.filter(b => b.alive && b.isPlayer);
     const enemyBullets = bulletManager.bullets.filter(b => b.alive && !b.isPlayer);
 
-    // Player bullets → enemies (both projected to screen space)
+    // Player bullets → enemies (swept collision in screen space)
     for (const bullet of playerBullets) {
       const bs = screenXY(bullet.x, bullet.y, bullet.z);
+      const bsPrev = screenXY(bullet.prevX, bullet.prevY, bullet.z);
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
         // Phantom: bullets pass through when invisible
         if (!enemy.isTargetable) continue;
         const es = screenXY(enemy.x, enemy.y, enemy.z);
-        const dx = bs.x - es.x;
-        const dy = bs.y - es.y;
-        const dist = dx * dx + dy * dy;
-        const hitDist = (BULLET_HIT_RADIUS + ENEMY_HIT_RADIUS);
+        // Scale enemy hit radius by projection so hitbox matches visual size
+        const eScale = getScale(enemy.z);
+        const hitDist = BULLET_HIT_RADIUS + ENEMY_HIT_RADIUS * eScale;
+        const dist = sqDistSegmentToPoint(bsPrev.x, bsPrev.y, bs.x, bs.y, es.x, es.y);
         if (dist < hitDist * hitDist) {
           // Spinner deflection: check if a spoke is pointing downward
           if (enemy.type === 'spinner' && this._spinnerDeflects(enemy)) {
@@ -71,18 +100,18 @@ export class CollisionSystem {
       }
     }
 
-    // Player bullets → captured ships (both projected to screen space)
+    // Player bullets → captured ships (swept collision in screen space)
     if (capturedShips) {
       for (const bullet of playerBullets) {
         if (!bullet.alive) continue;
         const bs = screenXY(bullet.x, bullet.y, bullet.z);
+        const bsPrev = screenXY(bullet.prevX, bullet.prevY, bullet.z);
         for (const cs of capturedShips) {
           if (!cs.alive || cs.state !== 'attached') continue;
           const css = screenXY(cs.x, cs.y, cs.z || 0);
-          const dx = bs.x - css.x;
-          const dy = bs.y - css.y;
-          const dist = dx * dx + dy * dy;
-          const hitDist = (BULLET_HIT_RADIUS + PLAYER_HIT_RADIUS);
+          const csScale = getScale(cs.z || 0);
+          const hitDist = BULLET_HIT_RADIUS + PLAYER_HIT_RADIUS * csScale;
+          const dist = sqDistSegmentToPoint(bsPrev.x, bsPrev.y, bs.x, bs.y, css.x, css.y);
           if (dist < hitDist * hitDist) {
             bullet.alive = false;
             cs.kill();
@@ -95,14 +124,13 @@ export class CollisionSystem {
       }
     }
 
-    // Enemy bullets → player (both projected to screen space)
+    // Enemy bullets → player (swept collision in screen space)
     const ps = screenXY(player.x, player.y, player.z || 0);
     for (const bullet of enemyBullets) {
       const bs = screenXY(bullet.x, bullet.y, bullet.z);
-      const dx = bs.x - ps.x;
-      const dy = bs.y - ps.y;
-      const dist = dx * dx + dy * dy;
+      const bsPrev = screenXY(bullet.prevX, bullet.prevY, bullet.z);
       const hitDist = (BULLET_HIT_RADIUS + PLAYER_HIT_RADIUS);
+      const dist = sqDistSegmentToPoint(bsPrev.x, bsPrev.y, bs.x, bs.y, ps.x, ps.y);
       if (dist < hitDist * hitDist) {
         bullet.alive = false;
         const wasDual = player.dualFighter;
@@ -173,14 +201,14 @@ export class CollisionSystem {
 
     for (const bullet of playerBullets) {
       const bs = screenXY(bullet.x, bullet.y, bullet.z);
+      const bsPrev = screenXY(bullet.prevX, bullet.prevY, bullet.z);
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
         if (!enemy.isTargetable) continue;
         const es = screenXY(enemy.x, enemy.y, enemy.z);
-        const dx = bs.x - es.x;
-        const dy = bs.y - es.y;
-        const dist = dx * dx + dy * dy;
-        const hitDist = (BULLET_HIT_RADIUS + ENEMY_HIT_RADIUS);
+        const eScale = getScale(enemy.z);
+        const hitDist = BULLET_HIT_RADIUS + ENEMY_HIT_RADIUS * eScale;
+        const dist = sqDistSegmentToPoint(bsPrev.x, bsPrev.y, bs.x, bs.y, es.x, es.y);
         if (dist < hitDist * hitDist) {
           if (enemy.type === 'spinner' && this._spinnerDeflects(enemy)) {
             bullet.alive = false;

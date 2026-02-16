@@ -9,9 +9,14 @@ export class Bullet {
     this.vy = vy;
     this.isPlayer = isPlayer;
     this.alive = true;
+    // Previous frame position for swept collision detection
+    this.prevX = x;
+    this.prevY = y;
   }
 
   update(dt) {
+    this.prevX = this.x;
+    this.prevY = this.y;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
 

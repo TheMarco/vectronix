@@ -618,14 +618,28 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
-      // ─── UFO COLLISION ───
+      // ─── UFO COLLISION (swept) ───
       if (this._ufo && this._ufo.alive) {
-        const ufoR = CONFIG.UFO_HIT_RADIUS;
+        const ufoR = CONFIG.UFO_HIT_RADIUS + 4; // UFO radius + bullet radius
+        const ufoR2 = ufoR * ufoR;
         for (const b of this.bulletManager.bullets) {
           if (!b.alive || !b.isPlayer) continue;
-          const dx = b.x - this._ufo.x;
-          const dy = b.y - this._ufo.y;
-          if (dx * dx + dy * dy < (ufoR + 4) * (ufoR + 4)) {
+          // Swept segment from prev to current vs UFO center
+          const abx = b.x - b.prevX;
+          const aby = b.y - b.prevY;
+          const acx = this._ufo.x - b.prevX;
+          const acy = this._ufo.y - b.prevY;
+          const ab2 = abx * abx + aby * aby;
+          let dist2;
+          if (ab2 === 0) {
+            dist2 = acx * acx + acy * acy;
+          } else {
+            const t = Math.max(0, Math.min(1, (acx * abx + acy * aby) / ab2));
+            const cx = b.prevX + t * abx - this._ufo.x;
+            const cy = b.prevY + t * aby - this._ufo.y;
+            dist2 = cx * cx + cy * cy;
+          }
+          if (dist2 < ufoR2) {
             b.alive = false;
             this._ufo.alive = false;
             if (this._ufoSound) { this._ufoSound.stop(); this._ufoSound = null; }
