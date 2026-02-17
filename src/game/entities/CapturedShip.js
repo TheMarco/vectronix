@@ -24,6 +24,10 @@ export class CapturedShip {
     this.releaseStartY = 0;
     this.releaseStartZ = 0;
     this.releaseT = 0;
+    this._prevBossX = startX;
+    this._prevBossY = startY;
+    this._swayX = 0;
+    this._swayY = 0;
   }
 
   update(dt, playerX, playerY) {
@@ -67,11 +71,29 @@ export class CapturedShip {
       }
 
       case 'attached': {
-        // Follow boss
-        this.x = this.boss.x;
-        this.y = this.boss.y + CONFIG.CAPTURED_SHIP_Y_OFFSET;
+        // Compute boss velocity for sway
+        const bvx = this.boss.x - this._prevBossX;
+        const bvy = this.boss.y - this._prevBossY;
+        this._prevBossX = this.boss.x;
+        this._prevBossY = this.boss.y;
+
+        // Sway trails behind boss movement (smooth follow)
+        const swayStrength = 12;
+        const targetSwayX = -bvx * swayStrength;
+        const targetSwayY = -bvy * swayStrength;
+        const lerpRate = 5.0 * dt;
+        this._swayX += (targetSwayX - this._swayX) * lerpRate;
+        this._swayY += (targetSwayY - this._swayY) * lerpRate;
+
+        // Only sway when boss is diving
+        const isDiving = this.boss.isDiving;
+        const sx = isDiving ? this._swayX : 0;
+        const sy = isDiving ? this._swayY : 0;
+
+        this.x = this.boss.x + sx;
+        this.y = this.boss.y + CONFIG.CAPTURED_SHIP_Y_OFFSET + sy;
         this.z = this.boss.z;
-        this.rotation = 0;
+        this.rotation = isDiving ? sx * -0.02 : 0;
         break;
       }
 

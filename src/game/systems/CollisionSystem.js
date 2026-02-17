@@ -125,13 +125,24 @@ export class CollisionSystem {
     }
 
     // Enemy bullets → player (swept collision in screen space)
+    // In dual fighter mode, check both ship positions
     const ps = screenXY(player.x, player.y, player.z || 0);
+    const dualOff = player.dualFighter ? CONFIG.DUAL_OFFSET_X : 0;
+    const playerHitPoints = dualOff > 0
+      ? [{ x: ps.x - dualOff, y: ps.y }, { x: ps.x + dualOff, y: ps.y }]
+      : [ps];
+
     for (const bullet of enemyBullets) {
+      if (!bullet.alive) continue;
       const bs = screenXY(bullet.x, bullet.y, bullet.z);
       const bsPrev = screenXY(bullet.prevX, bullet.prevY, bullet.z);
       const hitDist = (BULLET_HIT_RADIUS + PLAYER_HIT_RADIUS);
-      const dist = sqDistSegmentToPoint(bsPrev.x, bsPrev.y, bs.x, bs.y, ps.x, ps.y);
-      if (dist <= hitDist * hitDist) {
+      let hit = false;
+      for (const pp of playerHitPoints) {
+        const dist = sqDistSegmentToPoint(bsPrev.x, bsPrev.y, bs.x, bs.y, pp.x, pp.y);
+        if (dist <= hitDist * hitDist) { hit = true; break; }
+      }
+      if (hit) {
         bullet.alive = false;
         const wasDual = player.dualFighter;
         const hadShield = player.shieldActive;
@@ -154,11 +165,15 @@ export class CollisionSystem {
       if (!enemy.alive || enemy.state === 'holding' || enemy.state === 'queued' || enemy.state === 'entering') continue;
       if (enemy.state === 'tractor_beaming') continue; // beam captures, doesn't body-hit
       const es = screenXY(enemy.x, enemy.y, enemy.z);
-      const dx = es.x - ps.x;
-      const dy = es.y - ps.y;
-      const dist = dx * dx + dy * dy;
       const hitDist = (ENEMY_HIT_RADIUS + PLAYER_HIT_RADIUS);
-      if (dist <= hitDist * hitDist) {
+      let hit2 = false;
+      for (const pp of playerHitPoints) {
+        const dx = es.x - pp.x;
+        const dy = es.y - pp.y;
+        const dist = dx * dx + dy * dy;
+        if (dist <= hitDist * hitDist) { hit2 = true; break; }
+      }
+      if (hit2) {
         enemy.kill();
         if (this.onEnemyKilled) this.onEnemyKilled(enemy);
         const wasDual2 = player.dualFighter;

@@ -329,7 +329,7 @@ export class WaveSystem {
     if (this.onChallengeStart) this.onChallengeStart();
   }
 
-  update(dt, formation, playerX, playerY, bulletManager, playerDual = false) {
+  update(dt, formation, playerX, playerY, bulletManager, playerDual = false, playerLives = 3) {
     const dtMs = dt * 1000;
 
     // Track player velocity for predictive aim
@@ -454,7 +454,7 @@ export class WaveSystem {
 
       if (this.diveTimer >= effectiveInterval) {
         this.diveTimer -= effectiveInterval;
-        this._triggerDive(playerX, playerDual, pressureFactor);
+        this._triggerDive(playerX, playerDual, pressureFactor, playerLives);
       }
     }
 
@@ -541,7 +541,7 @@ export class WaveSystem {
     return true;
   }
 
-  _triggerDive(playerX, playerDual = false, pressureFactor = 1.0) {
+  _triggerDive(playerX, playerDual = false, pressureFactor = 1.0, playerLives = 3) {
     const holding = this.holdingEnemies;
     if (holding.length === 0) return;
 
@@ -601,6 +601,7 @@ export class WaveSystem {
       // no abduction already in progress, and no ship already captured
       // behaviorType 2 (commander) reduces tractor usage by 50%
       if (enemy.isBoss && !enemy.capturedShip && !playerDual &&
+          playerLives > 1 &&
           this.capturedShips.length === 0 &&
           !(enemy.behaviorType === 2 && Math.random() < 0.5) &&
           !this.enemies.some(e => e.alive && (
@@ -711,7 +712,15 @@ export class WaveSystem {
   /** Called when a boss with a captured ship is killed */
   releaseCapturedShip(boss) {
     if (!boss.capturedShip) return;
-    boss.capturedShip.release();
-    if (this.onRescue) this.onRescue();
+    // Only rescue if boss was diving — in formation the ship is destroyed
+    const wasFlying = boss.killedInState === 'diving' || boss.killedInState === 'returning' ||
+      boss.killedInState === 're-entering';
+    if (wasFlying) {
+      boss.capturedShip.release();
+      if (this.onRescue) this.onRescue();
+    } else {
+      boss.capturedShip.kill();
+      boss.capturedShip = null;
+    }
   }
 }

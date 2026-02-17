@@ -48,6 +48,7 @@ export class GameScene extends Phaser.Scene {
     this.waveSystem = new WaveSystem();
     this.collisionSystem = new CollisionSystem();
     this.explosionRenderer = new ExplosionRenderer();
+    this.explosionRenderer.crtMode = this.formation.crtMode;
     this.score = 0;
     this._prevScore = 0;
     this._nextExtraLifeIndex = 0;
@@ -188,7 +189,7 @@ export class GameScene extends Phaser.Scene {
         this.player.x + CONFIG.DUAL_OFFSET_X, this.player.y,
         CONFIG.COLORS.PLAYER, 12
       );
-      this.soundEngine.playExplosion();
+      this.soundEngine.playPlayerDeath();
       this._shakeAmount = 6;
     };
     this.collisionSystem.onBeamCapture = (boss) => {
@@ -548,10 +549,11 @@ export class GameScene extends Phaser.Scene {
 
       const ov = this.game.registry.get('shaderOverlay');
       this.formation.crtMode = ov && ov.getShaderName() === 'crt';
+      this.explosionRenderer.crtMode = this.formation.crtMode;
       this.formation.update(dt * enemyMult);
       this.waveSystem.performanceProfile = this.performanceProfile;
       this.waveSystem.riskMultiplier = this.riskMultiplier;
-      this.waveSystem.update(dt * enemyMult, this.formation, this.player.x, this.player.y, this.bulletManager, this.player.dualFighter);
+      this.waveSystem.update(dt * enemyMult, this.formation, this.player.x, this.player.y, this.bulletManager, this.player.dualFighter, this.player.lives);
 
       // Check for rescued captured ships → enter dual fighter
       for (const cs of this.waveSystem.capturedShips) {
@@ -1055,12 +1057,12 @@ export class GameScene extends Phaser.Scene {
     const blue = 0x2244ff;
 
     // Scrolling concave-up arcs — 6 arcs, smoothly animated
-    const arcCount = 6;
+    const arcCount = 4;
     const arcSpacing = 1.0 / arcCount;
     const segments = 12;
 
     for (let i = 0; i < arcCount; i++) {
-      const t = ((i * arcSpacing + time) % 1);
+      const t = (((i * arcSpacing - time) % 1) + 1) % 1;
       const arcY = bossY + t * beamHeight;
       const halfW = topWidth + (bottomWidth - topWidth) * t;
       // Sag grows with depth, pulses gently per arc
@@ -1109,19 +1111,17 @@ export class GameScene extends Phaser.Scene {
 
   _checkExtraLife() {
     const thresholds = CONFIG.EXTRA_LIFE_THRESHOLDS;
-    const repeat = CONFIG.EXTRA_LIFE_REPEAT;
 
-    // Determine the next threshold
-    let nextThreshold;
-    if (this._nextExtraLifeIndex < thresholds.length) {
-      nextThreshold = thresholds[this._nextExtraLifeIndex];
-    } else {
-      const extra = this._nextExtraLifeIndex - thresholds.length;
-      nextThreshold = thresholds[thresholds.length - 1] + repeat * (extra + 1);
+    // Only one extra life can ever be earned
+    if (this._nextExtraLifeIndex >= thresholds.length) {
+      this._prevScore = this.score;
+      return;
     }
 
+    const nextThreshold = thresholds[this._nextExtraLifeIndex];
+
     if (this.score >= nextThreshold && this._prevScore < nextThreshold) {
-      if (this.player.lives < 3) {
+      if (this.player.lives < CONFIG.START_LIVES) {
         this.player.lives++;
         this.soundEngine.playExtraLife();
         this.hud.showExtraLife();

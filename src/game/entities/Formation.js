@@ -47,11 +47,11 @@ export class Formation {
       const rowSpan = maxRow - minRow;
 
       // Compress horizontally (floor prevents glow overlap at Z=12 perspective)
-      const compressionFactor = 0.5 + ratio * 0.5; // ranges from ~0.5 to ~0.8
-      const colTarget = Math.max(38, CONFIG.FORMATION_COL_SPACING * compressionFactor);
+      const compressionFactor = 0.75 + ratio * 0.25; // ranges from ~0.75 to ~0.9
+      const colTarget = Math.max(48, CONFIG.FORMATION_COL_SPACING * compressionFactor);
       // Vertical: gentler compression
-      const rowCompress = 0.7 + ratio * 0.3;
-      const rowTarget = Math.max(38, CONFIG.FORMATION_ROW_SPACING * rowCompress);
+      const rowCompress = 0.8 + ratio * 0.2;
+      const rowTarget = Math.max(46, CONFIG.FORMATION_ROW_SPACING * rowCompress);
 
       this._colSpacingTarget = colTarget;
       this._rowSpacingTarget = rowTarget;
