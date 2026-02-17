@@ -641,10 +641,20 @@ export class GameScene extends Phaser.Scene {
       }
 
       // ─── POWER-UP TIMERS ───
+      // Kill all timed powerups (except shield) as soon as wave is complete
+      if (this.waveSystem.waveComplete) {
+        this._rapidFireTimer = 0;
+        this._rapidFireCooldown = 0;
+        this.bulletManager.maxBulletsBonus = 0;
+        this._slowdownTimer = 0;
+        this._magnetTimer = 0;
+        this._timeFreezeTimer = 0;
+      }
       if (this._rapidFireTimer > 0) {
         this._rapidFireTimer -= dt * 1000;
         if (this._rapidFireTimer <= 0) {
           this._rapidFireTimer = 0;
+          this._rapidFireCooldown = 0;
           this.bulletManager.maxBulletsBonus = 0;
         }
       }
@@ -680,12 +690,6 @@ export class GameScene extends Phaser.Scene {
 
       // Wave transition
       if (this.waveSystem.waveComplete && this.waveSystem.waveTransitionTimer <= 0) {
-        // Expire timed powerups between waves
-        this._rapidFireTimer = 0;
-        this._slowdownTimer = 0;
-        this._timeFreezeTimer = 0;
-        this._magnetTimer = 0;
-
         this._stats.wavesCleared++;
         this.waveSystem.startWave(this.formation);
         if (!this.waveSystem.isChallenge) {
