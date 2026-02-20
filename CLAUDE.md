@@ -179,3 +179,4 @@ Single-pass NTSC simulation at 256x224 virtual resolution:
 - `npm run build` — production build to `dist/`
 - `npm run build:ios` — build + Capacitor sync for iOS
 - Debug: add `?ships` to URL to open ShipViewerScene
+
