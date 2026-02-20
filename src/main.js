@@ -6,6 +6,8 @@ import { ShipViewerScene } from './game/scenes/ShipViewerScene.js';
 import { SoundEngine } from './game/audio/SoundEngine.js';
 import { createShaderOverlay } from './game/shaderOverlay.js';
 
+const isTauri = !!window.__TAURI_INTERNALS__;
+
 // Wait for fonts (Hyperspace) to load before starting the game
 document.fonts.ready.then(() => {
   const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -16,6 +18,11 @@ document.fonts.ready.then(() => {
     document.getElementById('mobile-cabinet').style.display = 'block';
     document.getElementById('game-container').style.display = 'none';
     document.getElementById('shader-toggle').style.display = 'none';
+  }
+
+  // Desktop web: show website elements (logo, download, instructions)
+  if (!isTouchDevice && !isTauri) {
+    document.body.classList.add('web-mode');
   }
 
   // Create game — on mobile, parent it inside the cabinet screen area
@@ -52,7 +59,7 @@ document.fonts.ready.then(() => {
   document.addEventListener('keydown', initAudio);
 
   // Apply shader overlay after canvas is ready
-  setTimeout(() => {
+  setTimeout(async () => {
     const shaderOverlay = createShaderOverlay(game.canvas);
     game.registry.set('shaderOverlay', shaderOverlay);
 
@@ -67,6 +74,168 @@ document.fonts.ready.then(() => {
           shaderOverlay.setShader(btn.dataset.shader);
         });
       });
+    }
+
+    // Tauri: native menu for display mode + fullscreen
+    if (isTauri) {
+      const { listen } = await import('@tauri-apps/api/event');
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const { invoke } = await import('@tauri-apps/api/core');
+      const appWindow = getCurrentWindow();
+
+      // Hide HTML shader buttons — native View menu replaces them
+      document.getElementById('shader-toggle').style.display = 'none';
+
+      // Sync initial display mode to menu (respects localStorage persistence)
+      invoke('sync_display_mode', { mode: shaderOverlay.getShaderName() });
+
+      // Listen for display mode menu events
+      listen('menu-event', (event) => {
+        switch (event.payload) {
+          case 'display_vector':
+            shaderOverlay.setShader('vector');
+            break;
+          case 'display_crt':
+            shaderOverlay.setShader('crt');
+            break;
+        }
+      });
+
+      // --- Fullscreen handling ---
+      const canvas = game.canvas;
+      const gameAspect = CONFIG.WIDTH / CONFIG.HEIGHT;
+      const fsHint = document.getElementById('fs-hint');
+      let isFullscreen = false;
+      let fsHintTimer = null;
+
+      const applyFullscreenLayout = (fs) => {
+        if (fs) {
+          // Scale canvas to max height, maintain aspect ratio
+          const screenW = window.innerWidth;
+          const screenH = window.innerHeight;
+          let w, h;
+          if (screenW / screenH > gameAspect) {
+            h = screenH;
+            w = Math.round(h * gameAspect);
+          } else {
+            w = screenW;
+            h = Math.round(w / gameAspect);
+          }
+          canvas.style.width = w + 'px';
+          canvas.style.height = h + 'px';
+          document.body.classList.add('fullscreen-mode');
+        } else {
+          canvas.style.width = '';
+          canvas.style.height = '';
+          document.body.classList.remove('fullscreen-mode');
+        }
+      };
+
+      const showFsHint = () => {
+        clearTimeout(fsHintTimer);
+        fsHint.classList.remove('fade-out');
+        fsHint.classList.add('visible');
+        fsHintTimer = setTimeout(() => {
+          fsHint.classList.add('fade-out');
+          setTimeout(() => fsHint.classList.remove('visible', 'fade-out'), 400);
+        }, 2500);
+      };
+
+      const hideFsHint = () => {
+        clearTimeout(fsHintTimer);
+        fsHint.classList.remove('visible', 'fade-out');
+      };
+
+      // Detect fullscreen changes (native menu, green button, Cmd+Ctrl+F)
+      appWindow.onResized(async () => {
+        const fs = await appWindow.isFullscreen();
+        if (fs !== isFullscreen) {
+          isFullscreen = fs;
+          applyFullscreenLayout(fs);
+          if (fs) showFsHint(); else hideFsHint();
+        }
+      });
+
+      // ESC exits fullscreen — synchronous check, capture phase
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && isFullscreen) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          appWindow.setFullscreen(false);
+        }
+      }, true);
+    }
+
+    // Browser fullscreen (desktop web, not Tauri)
+    if (!isTauri && !isTouchDevice) {
+      const canvas = game.canvas;
+      const gameAspect = CONFIG.WIDTH / CONFIG.HEIGHT;
+      const fsHint = document.getElementById('fs-hint');
+      let isFullscreen = false;
+      let fsHintTimer = null;
+
+      const applyFullscreenLayout = (fs) => {
+        if (fs) {
+          const screenW = window.innerWidth;
+          const screenH = window.innerHeight;
+          let w, h;
+          if (screenW / screenH > gameAspect) {
+            h = screenH;
+            w = Math.round(h * gameAspect);
+          } else {
+            w = screenW;
+            h = Math.round(w / gameAspect);
+          }
+          canvas.style.width = w + 'px';
+          canvas.style.height = h + 'px';
+          document.body.classList.add('fullscreen-mode');
+        } else {
+          canvas.style.width = '';
+          canvas.style.height = '';
+          document.body.classList.remove('fullscreen-mode');
+        }
+      };
+
+      const showFsHint = () => {
+        clearTimeout(fsHintTimer);
+        fsHint.classList.remove('fade-out');
+        fsHint.classList.add('visible');
+        fsHintTimer = setTimeout(() => {
+          fsHint.classList.add('fade-out');
+          setTimeout(() => fsHint.classList.remove('visible', 'fade-out'), 400);
+        }, 2500);
+      };
+
+      const hideFsHint = () => {
+        clearTimeout(fsHintTimer);
+        fsHint.classList.remove('visible', 'fade-out');
+      };
+
+      document.addEventListener('fullscreenchange', () => {
+        const fs = !!document.fullscreenElement;
+        if (fs !== isFullscreen) {
+          isFullscreen = fs;
+          applyFullscreenLayout(fs);
+          if (fs) showFsHint(); else hideFsHint();
+        }
+      });
+
+      document.getElementById('fullscreen-btn').addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen();
+        } else {
+          document.exitFullscreen();
+        }
+      });
+
+      // ESC exits fullscreen — capture phase, intercepts before game pause
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && isFullscreen) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          document.exitFullscreen();
+        }
+      }, true);
     }
 
     // Mobile: wire up cabinet touch zones with proper held-state + multi-touch

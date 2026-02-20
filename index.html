@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>VECTRONIX</title>
+  <meta name="description" content="Vector-style arcade shooter. Play in your browser or download for Mac." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="Vectronix" />
+  <link rel="apple-touch-icon" href="/icon.png" />
+  <link rel="manifest" href="/manifest.json" />
   <style>
     @font-face {
       font-family: 'Hyperspace';
@@ -25,6 +31,82 @@
     }
     ::-webkit-scrollbar { display: none; }
 
+    /* === Website elements (desktop web only) === */
+    .web-only { display: none; }
+    body.web-mode {
+      overflow-y: auto;
+      justify-content: flex-start;
+      padding: 24px 0 40px;
+      min-height: 100%;
+      height: auto;
+    }
+    body.web-mode .web-only { display: block; }
+    body.web-mode #shader-toggle .web-only { display: inline-block; }
+
+    #web-header {
+      text-align: center;
+      padding: 8px 0 16px;
+    }
+    #web-header img {
+      width: 320px;
+      max-width: 80vw;
+      display: block;
+      margin: 0 auto;
+      filter: drop-shadow(0 0 12px rgba(68, 136, 255, 0.5));
+    }
+    .web-credit {
+      color: #6eaaff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 13px;
+      letter-spacing: 1px;
+      margin-top: 10px;
+    }
+    .web-credit a {
+      color: #4488ff;
+      text-decoration: none;
+    }
+    .web-credit a:hover {
+      text-decoration: underline;
+    }
+
+    #web-footer {
+      text-align: center;
+      padding: 20px 24px 0;
+      max-width: 600px;
+    }
+    .download-btn {
+      display: inline-block;
+      background: transparent;
+      border: 1px solid #4488ff;
+      color: #4488ff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 16px;
+      padding: 10px 32px;
+      letter-spacing: 2px;
+      text-decoration: none;
+      transition: background 0.2s, color 0.2s;
+      margin-bottom: 20px;
+    }
+    .download-btn:hover {
+      background: #4488ff;
+      color: #000;
+    }
+    .web-note {
+      color: #6eaaff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 13px;
+      line-height: 1.8;
+      letter-spacing: 0.5px;
+    }
+    .web-controls {
+      color: rgba(110, 170, 255, 0.6);
+      font-family: 'Hyperspace', monospace;
+      font-size: 12px;
+      line-height: 1.8;
+      letter-spacing: 0.5px;
+      margin-top: 16px;
+    }
+
     /* === Desktop layout === */
     #game-container {
       display: flex;
@@ -38,6 +120,51 @@
       image-rendering: -webkit-crisp-edges;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
+    }
+    body.web-mode #game-container canvas {
+      width: 507px !important;
+      height: 443px !important;
+    }
+    /* Fullscreen: JS sets canvas size to maintain aspect ratio */
+    body.fullscreen-mode #game-container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    body.fullscreen-mode .web-only {
+      display: none !important;
+    }
+    body.fullscreen-mode #shader-toggle {
+      display: none !important;
+    }
+    /* Fullscreen ESC hint */
+    #fs-hint {
+      display: none;
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.75);
+      color: #4488ff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 15px;
+      padding: 8px 24px;
+      border: 1px solid rgba(68, 136, 255, 0.4);
+      border-radius: 6px;
+      letter-spacing: 1px;
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    #fs-hint.visible {
+      display: block;
+      opacity: 1;
+    }
+    #fs-hint.fade-out {
+      opacity: 0;
     }
     #shader-toggle {
       display: flex;
@@ -166,12 +293,33 @@
     <div id="touch-swipe" class="touch-zone"></div>
   </div>
 
+  <!-- Website header -->
+  <div id="web-header" class="web-only">
+    <img src="/logo.png" alt="VECTRONIX" />
+    <p class="web-credit">A game by <a href="https://ai-created.com/" target="_blank" rel="noopener">Marco van Hylckama Vlieg</a></p>
+  </div>
+
   <!-- Desktop layout -->
   <div id="game-container"></div>
+  <div id="fs-hint">Press ESC to leave full screen</div>
   <div id="shader-toggle">
     <button data-shader="crt">CRT</button>
     <button data-shader="vector">VECTOR</button>
+    <button id="fullscreen-btn" class="web-only">FULL SCREEN</button>
   </div>
+
+  <!-- Website footer -->
+  <div id="web-footer" class="web-only">
+    <a class="download-btn" href="https://qgvw43vbronq2sdn.public.blob.vercel-storage.com/Vectronix_0.1.0_universal.dmg" download>DOWNLOAD FOR MAC</a>
+    <p class="web-note">
+      On mobile? Load this page on your phone and use<br />
+      "Add to Home Screen" for the full app experience.
+    </p>
+    <p class="web-controls">
+      Arrow keys: move &mdash; Space: fire &mdash; Enter: start
+    </p>
+  </div>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

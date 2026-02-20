@@ -6,18 +6,22 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:ios": "vite build && npx cap sync ios"
+    "build:ios": "vite build && npx cap sync ios",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build --target universal-apple-darwin"
   },
   "dependencies": {
-    "phaser": "^3.87.0",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/cli": "^8.0.1",
     "@capacitor/core": "^8.0.1",
     "@capacitor/ios": "^8.0.1",
-    "@capacitor/cli": "^8.0.1",
-    "@capacitor/app": "^8.0.0",
     "@capacitor/splash-screen": "^8.0.0",
-    "@capacitor/status-bar": "^8.0.0"
+    "@capacitor/status-bar": "^8.0.0",
+    "@tauri-apps/api": "^2.10.1",
+    "phaser": "^3.87.0"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.10.0",
     "vite": "^6.0.0"
   }
 }
