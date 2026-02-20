@@ -47,13 +47,6 @@
       text-align: center;
       padding: 8px 0 16px;
     }
-    #web-header img {
-      width: 320px;
-      max-width: 80vw;
-      display: block;
-      margin: 0 auto;
-      filter: drop-shadow(0 0 12px rgba(68, 136, 255, 0.5));
-    }
     .web-credit {
       color: #6eaaff;
       font-family: 'Hyperspace', monospace;
@@ -88,6 +81,36 @@
       margin-bottom: 20px;
     }
     .download-btn:hover {
+      background: #4488ff;
+      color: #000;
+    }
+    .support-box {
+      border: 1px solid rgba(68, 136, 255, 0.3);
+      padding: 14px 20px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .support-box p {
+      color: #6eaaff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+    }
+    .support-btn {
+      display: inline-block;
+      background: transparent;
+      border: 1px solid #4488ff;
+      color: #4488ff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 13px;
+      padding: 6px 22px;
+      letter-spacing: 2px;
+      text-decoration: none;
+      transition: background 0.2s, color 0.2s;
+    }
+    .support-btn:hover {
       background: #4488ff;
       color: #000;
     }
@@ -295,7 +318,6 @@
 
   <!-- Website header -->
   <div id="web-header" class="web-only">
-    <img src="/logo.png" alt="VECTRONIX" />
     <p class="web-credit">A game by <a href="https://ai-created.com/" target="_blank" rel="noopener">Marco van Hylckama Vlieg</a></p>
   </div>
 
@@ -310,7 +332,11 @@
 
   <!-- Website footer -->
   <div id="web-footer" class="web-only">
-    <a class="download-btn" href="https://qgvw43vbronq2sdn.public.blob.vercel-storage.com/Vectronix_0.1.0_universal.dmg" download>DOWNLOAD FOR MAC</a>
+    <a class="download-btn" href="https://qgvw43vbronq2sdn.public.blob.vercel-storage.com/Vectronix_0.1.0_universal.dmg" download>DOWNLOAD FOR FREE FOR MAC</a>
+    <div class="support-box">
+      <p>Want to support me? Consider buying one of my paid apps in the Apple App Store!</p>
+      <a class="support-btn" href="https://apps.apple.com/us/developer/marco-van-hylckama-vlieg/id1869986586" target="_blank" rel="noopener">VIEW MY APPS</a>
+    </div>
     <p class="web-note">
       Wanna play on your phone? Load this page on your phone and use<br />
       "Add to Home Screen" for a full app experience.
