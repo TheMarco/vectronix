@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>VECTRONIX</title>
+  <meta name="description" content="Vector-style arcade shooter. Play in your browser or download for Mac." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="Vectronix" />
+  <link rel="apple-touch-icon" href="./icon.png" />
+  <meta name="x-ogp-key" content="d8ff06b7-76f6-4577-9eb7-2560fea24c69" id="ogp-key-meta" />
+  <link rel="manifest" href="./manifest.json" />
+  <style>
+    @font-face {
+      font-family: 'Hyperspace';
+      src: url('fonts/hyperspace.ttf') format('truetype');
+      font-display: block;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    ::-webkit-scrollbar { display: none; }
+
+    /* === Website elements (desktop web only) === */
+    .web-only { display: none; }
+    body.web-mode {
+      overflow-y: auto;
+      justify-content: flex-start;
+      padding: 24px 0 40px;
+      min-height: 100%;
+      height: auto;
+    }
+    body.web-mode .web-only { display: block; }
+    body.web-mode #shader-toggle .web-only { display: inline-block; }
+
+    #web-header {
+      text-align: center;
+      padding: 8px 0 16px;
+    }
+    .web-credit {
+      color: #6eaaff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 13px;
+      letter-spacing: 1px;
+      margin-top: 10px;
+    }
+    .web-credit a {
+      color: #4488ff;
+      text-decoration: none;
+    }
+    .web-credit a:hover {
+      text-decoration: underline;
+    }
+
+    #web-footer {
+      text-align: center;
+      padding: 20px 24px 0;
+      max-width: 600px;
+    }
+    .download-btn {
+      display: inline-block;
+      background: transparent;
+      border: 1px solid #4488ff;
+      color: #4488ff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 16px;
+      padding: 10px 32px;
+      letter-spacing: 2px;
+      text-decoration: none;
+      transition: background 0.2s, color 0.2s;
+      margin-bottom: 20px;
+    }
+    .download-btn:hover {
+      background: #4488ff;
+      color: #000;
+    }
+    .support-box {
+      border: 1px solid rgba(68, 136, 255, 0.3);
+      padding: 14px 20px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .support-box p {
+      color: #6eaaff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+    }
+    .support-btn {
+      display: inline-block;
+      background: transparent;
+      border: 1px solid #4488ff;
+      color: #4488ff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 13px;
+      padding: 6px 22px;
+      letter-spacing: 2px;
+      text-decoration: none;
+      transition: background 0.2s, color 0.2s;
+    }
+    .support-btn:hover {
+      background: #4488ff;
+      color: #000;
+    }
+    .web-note {
+      color: #6eaaff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 13px;
+      line-height: 1.8;
+      letter-spacing: 0.5px;
+    }
+    .web-controls {
+      color: rgba(110, 170, 255, 0.6);
+      font-family: 'Hyperspace', monospace;
+      font-size: 12px;
+      line-height: 1.8;
+      letter-spacing: 0.5px;
+      margin-top: 16px;
+    }
+
+    /* === Desktop layout === */
+    #game-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      max-width: 100vw;
+    }
+    #game-container canvas {
+      display: block;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: -webkit-crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    body.web-mode:not(.fullscreen-mode) #game-container canvas {
+      width: 507px !important;
+      height: 443px !important;
+    }
+    /* Fullscreen: JS sets canvas size to maintain aspect ratio */
+    body.fullscreen-mode #game-container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    body.fullscreen-mode .web-only {
+      display: none !important;
+    }
+    body.fullscreen-mode #shader-toggle {
+      display: none !important;
+    }
+    /* Fullscreen ESC hint */
+    #fs-hint {
+      display: none;
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.75);
+      color: #4488ff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 15px;
+      padding: 8px 24px;
+      border: 1px solid rgba(68, 136, 255, 0.4);
+      border-radius: 6px;
+      letter-spacing: 1px;
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    #fs-hint.visible {
+      display: block;
+      opacity: 1;
+    }
+    #fs-hint.fade-out {
+      opacity: 0;
+    }
+    #shader-toggle {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    #shader-toggle button {
+      background: transparent;
+      border: 1px solid #4488ff;
+      color: #4488ff;
+      font-family: 'Hyperspace', monospace;
+      font-size: 13px;
+      padding: 3px 18px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: background 0.15s, color 0.15s;
+    }
+    #shader-toggle button:hover {
+      background: rgba(68, 136, 255, 0.15);
+    }
+    #shader-toggle button.active {
+      background: #4488ff;
+      color: #000;
+    }
+
+    /* === Mobile cabinet layout === */
+    #mobile-cabinet {
+      display: none;
+      position: relative;
+      width: 100vw;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #mobile-cabinet img {
+      width: 100%;
+      display: block;
+    }
+    /* Screen area where the game canvas goes */
+    #cabinet-screen {
+      position: absolute;
+      top: 17.4%;
+      left: 3.6%;
+      width: 92.8%;
+    }
+    #cabinet-screen canvas {
+      width: 100% !important;
+      height: auto !important;
+      display: block;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: -webkit-crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    /* Invisible touch zones over backdrop buttons */
+    .touch-zone {
+      position: absolute;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      z-index: 10;
+      cursor: pointer;
+      transition: background 0.05s ease-out;
+    }
+    .touch-zone.flash {
+      background: radial-gradient(circle, rgba(68, 136, 255, 0.45) 0%, transparent 70%);
+    }
+    .touch-zone.held {
+      background: radial-gradient(circle, rgba(68, 136, 255, 0.25) 0%, transparent 70%);
+    }
+    #touch-display {
+      top: 68%;
+      left: 22%;
+      width: 25%;
+      height: 9%;
+      border-radius: 8px;
+    }
+    #touch-pause {
+      top: 68%;
+      left: 53%;
+      width: 25%;
+      height: 9%;
+      border-radius: 8px;
+    }
+    #touch-swipe {
+      top: 80%;
+      left: 2%;
+      width: 64%;
+      height: 17%;
+      border-radius: 10px;
+    }
+    #touch-fire {
+      top: 80%;
+      left: 68%;
+      width: 30%;
+      height: 17%;
+      border-radius: 10px;
+    }
+
+    /* When mobile cabinet is active, center vertically or scroll if too tall */
+    body.mobile-mode {
+      justify-content: center;
+      overflow-y: auto;
+    }
+
+    /* iPad / wider screens: scale cabinet by height instead of width */
+    @media (min-aspect-ratio: 9/16) {
+      #mobile-cabinet {
+        width: auto;
+        height: 100vh;
+      }
+      #mobile-cabinet img {
+        width: auto;
+        height: 100%;
+      }
+    }
+  </style>
+  <script type="module" crossorigin src="./assets/index-P8qiCbTv.js"></script>
+</head>
+<body>
+  <!-- Mobile cabinet (hidden on desktop) -->
+  <div id="mobile-cabinet">
+    <img src="./backdrop.png" alt="" />
+    <div id="cabinet-screen"></div>
+    <div id="touch-display" class="touch-zone"></div>
+    <div id="touch-pause" class="touch-zone"></div>
+    <div id="touch-fire" class="touch-zone"></div>
+    <div id="touch-swipe" class="touch-zone"></div>
+  </div>
+
+  <!-- Website header -->
+  <div id="web-header" class="web-only">
+    <p class="web-credit">A game by <a href="https://ai-created.com/" target="_blank" rel="noopener">Marco van Hylckama Vlieg</a></p>
+  </div>
+
+  <!-- Desktop layout -->
+  <div id="game-container"></div>
+  <div id="fs-hint">Press ESC to leave full screen</div>
+  <div id="shader-toggle">
+    <button data-shader="crt">CRT</button>
+    <button data-shader="vector">VECTOR</button>
+    <button id="fullscreen-btn" class="web-only">FULL SCREEN</button>
+  </div>
+
+  <!-- Website footer -->
+  <div id="web-footer" class="web-only">
+    <a class="download-btn" href="https://qgvw43vbronq2sdn.public.blob.vercel-storage.com/Vectronix_0.1.0_universal.dmg" download>DOWNLOAD FOR FREE FOR MAC</a>
+    <div class="support-box">
+      <p>Want to support me? Consider buying one of my paid apps in the Apple App Store!</p>
+      <a class="support-btn" href="https://apps.apple.com/us/developer/marco-van-hylckama-vlieg/id1869986586" target="_blank" rel="noopener">VIEW MY APPS</a>
+    </div>
+    <p class="web-note">
+      Wanna play on your phone? Load this page on your phone and use<br />
+      "Add to Home Screen" for a full app experience.
+    </p>
+    <p class="web-controls">
+      Arrow keys: move &mdash; Space: fire &mdash; Enter: start
+    </p>
+  </div>
+
+</body>
+</html>
