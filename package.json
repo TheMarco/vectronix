@@ -18,7 +18,8 @@
     "@capacitor/splash-screen": "^8.0.0",
     "@capacitor/status-bar": "^8.0.0",
     "@tauri-apps/api": "^2.10.1",
-    "phaser": "^3.87.0"
+    "phaser": "^3.87.0",
+    "three": "^0.183.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.0",

@@ -7,6 +7,7 @@ import { SoundEngine } from './game/audio/SoundEngine.js';
 import { createShaderOverlay } from './game/shaderOverlay.js';
 
 const isTauri = !!window.__TAURI_INTERNALS__;
+const isIframed = window !== window.top;
 
 // Wait for fonts (Hyperspace) to load before starting the game
 document.fonts.ready.then(() => {
@@ -21,7 +22,8 @@ document.fonts.ready.then(() => {
   }
 
   // Desktop web: show website elements (logo, download, instructions)
-  if (!isTouchDevice && !isTauri) {
+  // Skip web-mode when iframed (e.g. play.fun embed)
+  if (!isTouchDevice && !isTauri && !isIframed) {
     document.body.classList.add('web-mode');
   }
 
@@ -60,7 +62,7 @@ document.fonts.ready.then(() => {
 
   // Apply shader overlay after canvas is ready
   setTimeout(async () => {
-    const shaderOverlay = createShaderOverlay(game.canvas);
+    const shaderOverlay = await createShaderOverlay(game.canvas);
     game.registry.set('shaderOverlay', shaderOverlay);
 
     // Desktop: wire up shader toggle buttons and set initial active state

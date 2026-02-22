@@ -60,8 +60,20 @@ export class ShipViewerScene extends Phaser.Scene {
       this._scrollY = Math.min(this._maxScroll, this._scrollY + 4);
     }
 
+    const overlay = this.game.registry.get('shaderOverlay');
+    this._pkt = overlay && overlay.gpuLinesReady ? overlay.packet : null;
+    if (this._pkt) {
+      this._pkt.reset();
+      this._pkt.shakeX = 0;
+      this._pkt.shakeY = 0;
+    }
+
     this.gfx.clear();
     this._drawGrid();
+
+    if (this._pkt) {
+      overlay.submitPacket(this._pkt);
+    }
   }
 
   _drawGrid() {
@@ -73,7 +85,7 @@ export class ShipViewerScene extends Phaser.Scene {
       const tw = vectorTextWidth(COLUMNS[c], TEXT_SCALE);
       const lines = vectorText(COLUMNS[c], cx - tw / 2, HEADER_Y + oy, TEXT_SCALE);
       for (const l of lines) {
-        drawGlowLine(this.gfx, l.x1, l.y1, l.x2, l.y2, 0x88ddff);
+        this._glowLine(l.x1, l.y1, l.x2, l.y2, 0x88ddff);
       }
     }
 
@@ -88,7 +100,7 @@ export class ShipViewerScene extends Phaser.Scene {
       // Row label
       const labelLines = vectorText(type.toUpperCase(), LABEL_X, rowY - 5, TEXT_SCALE);
       for (const l of labelLines) {
-        drawGlowLine(this.gfx, l.x1, l.y1, l.x2, l.y2, 0x556677);
+        this._glowLine(l.x1, l.y1, l.x2, l.y2, 0x556677);
       }
 
       // Draw each applicable state
@@ -150,10 +162,18 @@ export class ShipViewerScene extends Phaser.Scene {
     for (const line of lines) {
       const col = line.c ? color2 : color1;
       if (passes) {
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col, false, passes);
+        this._glowLine(line.x1, line.y1, line.x2, line.y2, col, false, passes);
       } else {
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
+        this._glowLine(line.x1, line.y1, line.x2, line.y2, col);
       }
+    }
+  }
+
+  _glowLine(x1, y1, x2, y2, color, mask = false, passes = null) {
+    if (this._pkt) {
+      this._pkt.glowLine(x1, y1, x2, y2, color, mask, passes);
+    } else {
+      drawGlowLine(this.gfx, x1, y1, x2, y2, color, mask, passes || undefined);
     }
   }
 

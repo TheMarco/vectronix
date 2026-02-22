@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
-import { drawGlowLine } from '../rendering/GlowRenderer.js';
+import { drawGlowLine, drawGlowDot } from '../rendering/GlowRenderer.js';
 import { vectorText, vectorTextWidth } from '../rendering/VectorFont.js';
 import { projectPoint, projectModelFlat } from '../rendering/Projection.js';
 import { GRUNT, ATTACKER, COMMANDER, SPINNER, BOMBER, GUARDIAN, PHANTOM, PLAYER_SHIP } from '../rendering/Models.js';
@@ -180,40 +180,40 @@ export class TitleScene extends Phaser.Scene {
     }
 
     // ─── RENDER ───
+    const overlay = this.game.registry.get('shaderOverlay');
+    this._pkt = overlay && overlay.gpuLinesReady ? overlay.packet : null;
+
+    if (this._pkt) {
+      this._pkt.reset();
+      this._pkt.shakeX = 0;
+      this._pkt.shakeY = 0;
+    }
+
     this.gfx.clear();
     this.bgGfx.clear();
 
     // Starfield (parallax streaks, same as GameScene)
     for (const star of this._stars) {
       const streakLen = star.speed * 0.08;
-      this.bgGfx.lineStyle(star.size, star.color, star.brightness);
-      this.bgGfx.beginPath();
-      this.bgGfx.moveTo(star.x, star.y);
-      this.bgGfx.lineTo(star.x, star.y + streakLen);
-      this.bgGfx.strokePath();
+      this._starLine(star.x, star.y, star.x, star.y + streakLen, star.color, star.brightness, star.size * 0.5);
     }
 
-    // Geometric background decoration — hexagonal grid pulse
-    const pulseA = 0.08 + Math.sin(this._time * 1.5) * 0.04;
-    const hexR = 280;
-    for (let i = 0; i < 6; i++) {
-      const a1 = (i / 6) * Math.PI * 2 + this._time * 0.15;
-      const a2 = ((i + 1) / 6) * Math.PI * 2 + this._time * 0.15;
-      const x1 = CX + Math.cos(a1) * hexR;
-      const y1 = CY - 50 + Math.sin(a1) * hexR * 0.6;
-      const x2 = CX + Math.cos(a2) * hexR;
-      const y2 = CY - 50 + Math.sin(a2) * hexR * 0.6;
-      this.bgGfx.lineStyle(1.5, 0x222255, pulseA);
-      this.bgGfx.beginPath();
-      this.bgGfx.moveTo(x1, y1);
-      this.bgGfx.lineTo(x2, y2);
-      this.bgGfx.strokePath();
-      // Radial spokes
-      this.bgGfx.lineStyle(1, 0x222255, pulseA * 0.5);
-      this.bgGfx.beginPath();
-      this.bgGfx.moveTo(CX, CY - 50);
-      this.bgGfx.lineTo(x1, y1);
-      this.bgGfx.strokePath();
+    // Geometric background decoration — hexagonal grid pulse (skip in CRT: aliases badly)
+    const isCRT = overlay && overlay.getShaderName && overlay.getShaderName() === 'crt';
+    if (!isCRT) {
+      const pulseA = 0.08 + Math.sin(this._time * 1.5) * 0.04;
+      const hexR = 280;
+      for (let i = 0; i < 6; i++) {
+        const a1 = (i / 6) * Math.PI * 2 + this._time * 0.15;
+        const a2 = ((i + 1) / 6) * Math.PI * 2 + this._time * 0.15;
+        const x1 = CX + Math.cos(a1) * hexR;
+        const y1 = CY - 50 + Math.sin(a1) * hexR * 0.6;
+        const x2 = CX + Math.cos(a2) * hexR;
+        const y2 = CY - 50 + Math.sin(a2) * hexR * 0.6;
+        this._starLine(x1, y1, x2, y2, 0x222255, pulseA, 0.75);
+        // Radial spokes
+        this._starLine(CX, CY - 50, x1, y1, 0x222255, pulseA * 0.5, 0.5);
+      }
     }
 
     // ─── LOGO ───
@@ -237,8 +237,9 @@ export class TitleScene extends Phaser.Scene {
       const lines = projectModelFlat(o.model, op.x, op.y, op.scale * 1.4, rotation);
       for (const line of lines) {
         const col = line.c ? o.color2 : o.color;
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
+        this._glowLine(line.x1, line.y1, line.x2, line.y2, col);
       }
+      this._drawVertexDots(lines, (line) => line.c ? o.color2 : o.color);
     }
 
     // ─── PLAYER SHIP (static display) ───
@@ -252,21 +253,27 @@ export class TitleScene extends Phaser.Scene {
         const col = line.c === 3 ? CONFIG.COLORS.PLAYER_RED
           : line.c === 2 ? CONFIG.COLORS.PLAYER_BLUE
           : CONFIG.COLORS.PLAYER;
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
+        this._glowLine(line.x1, line.y1, line.x2, line.y2, col);
       }
       for (const line of lines) {
         if (line.c !== 1) continue;
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, CONFIG.COLORS.PLAYER_WHITE);
+        this._glowLine(line.x1, line.y1, line.x2, line.y2, CONFIG.COLORS.PLAYER_WHITE);
       }
+      this._drawVertexDots(lines, (line) => {
+        if (line.c === 1) return CONFIG.COLORS.PLAYER_WHITE;
+        if (line.c === 3) return CONFIG.COLORS.PLAYER_RED;
+        if (line.c === 2) return CONFIG.COLORS.PLAYER_BLUE;
+        return CONFIG.COLORS.PLAYER;
+      });
       // Dual nacelle thrust
       const flicker = Math.sin(this._time * 12) * 0.3 + 0.7;
       const nacX = 5.5 * shipScale;
       const engY = shipY + 9 * shipScale;
       const tLen = 8 * flicker;
-      drawGlowLine(this.gfx, CX - nacX - 1, engY, CX - nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
-      drawGlowLine(this.gfx, CX - nacX + 1, engY, CX - nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
-      drawGlowLine(this.gfx, CX + nacX - 1, engY, CX + nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
-      drawGlowLine(this.gfx, CX + nacX + 1, engY, CX + nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
+      this._glowLine(CX - nacX - 1, engY, CX - nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
+      this._glowLine(CX - nacX + 1, engY, CX - nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
+      this._glowLine(CX + nacX - 1, engY, CX + nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
+      this._glowLine(CX + nacX + 1, engY, CX + nacX, engY + tLen, CONFIG.COLORS.PLAYER_THRUST);
     }
 
     // ─── SUB-TEXT ───
@@ -279,7 +286,7 @@ export class TitleScene extends Phaser.Scene {
         const subW = vectorTextWidth(subText, subScale, 1.2);
         const subLines = vectorText(subText, CX - subW / 2, 560, subScale, 1.2);
         for (const line of subLines) {
-          drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x99bbee);
+          this._glowLine(line.x1, line.y1, line.x2, line.y2, 0x99bbee);
         }
       }
 
@@ -290,7 +297,7 @@ export class TitleScene extends Phaser.Scene {
         const hiW = vectorTextWidth(hiText, hiScale, 1);
         const hiLines = vectorText(hiText, CX - hiW / 2, 240, hiScale, 1);
         for (const line of hiLines) {
-          drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x88aadd);
+          this._glowLine(line.x1, line.y1, line.x2, line.y2, 0x88aadd);
         }
       }
 
@@ -300,10 +307,67 @@ export class TitleScene extends Phaser.Scene {
       const cpW = vectorTextWidth(cpText, cpScale, 1);
       const cpLines = vectorText(cpText, CX - cpW / 2, 620, cpScale, 1);
       for (const line of cpLines) {
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, 0x88aadd);
+        this._glowLine(line.x1, line.y1, line.x2, line.y2, 0x88aadd);
       }
     }
 
+    // Submit packet for GPU rendering
+    if (this._pkt) {
+      overlay.submitPacket(this._pkt);
+    }
+
+  }
+
+  _glowLine(x1, y1, x2, y2, color, mask = false, passes = null) {
+    if (this._pkt) {
+      this._pkt.glowLine(x1, y1, x2, y2, color, mask, passes);
+    } else {
+      drawGlowLine(this.gfx, x1, y1, x2, y2, color, mask, passes || undefined);
+    }
+  }
+
+  _starLine(x1, y1, x2, y2, color, alpha, halfWidth) {
+    if (this._pkt) {
+      this._pkt.addBgLine(x1, y1, x2, y2, color, alpha, halfWidth);
+    } else {
+      this.bgGfx.lineStyle(halfWidth * 2, color, alpha);
+      this.bgGfx.beginPath();
+      this.bgGfx.moveTo(x1, y1);
+      this.bgGfx.lineTo(x2, y2);
+      this.bgGfx.strokePath();
+    }
+  }
+
+  _glowDot(x, y, color) {
+    if (this._pkt) {
+      this._pkt.glowLine(x, y, x + 0.5, y + 0.5, color, false, [
+        { width: 4.5, alpha: 0.04 },
+        { width: 3, alpha: 0.15 },
+        { width: 1.5, alpha: 0.6 },
+      ]);
+    } else {
+      drawGlowDot(this.gfx, x, y, color);
+    }
+  }
+
+  _drawVertexDots(lines, colorFn) {
+    // Skip in CRT mode
+    const overlay = this.game.registry.get('shaderOverlay');
+    if (overlay && overlay.getShaderName() === 'crt') return;
+
+    const seen = new Set();
+    for (const line of lines) {
+      const k1 = (Math.round(line.x1) << 16) | (Math.round(line.y1) & 0xFFFF);
+      if (!seen.has(k1)) {
+        seen.add(k1);
+        this._glowDot(line.x1, line.y1, colorFn(line));
+      }
+      const k2 = (Math.round(line.x2) << 16) | (Math.round(line.y2) & 0xFFFF);
+      if (!seen.has(k2)) {
+        seen.add(k2);
+        this._glowDot(line.x2, line.y2, colorFn(line));
+      }
+    }
   }
 
 }

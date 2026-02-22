@@ -92,6 +92,53 @@ export class ExplosionRenderer {
     }
   }
 
+  drawToPacket(pkt) {
+    for (const exp of this.explosions) {
+      if (exp.crt) {
+        this._pktCrt(pkt, exp);
+      } else {
+        this._pktVector(pkt, exp);
+      }
+    }
+  }
+
+  _pktVector(pkt, exp) {
+    const lifeRatio = 1 - exp.elapsed / PARTICLE_LIFE_MS;
+    if (lifeRatio <= 0) return;
+    const alpha = lifeRatio * lifeRatio;
+
+    for (const p of exp.particles) {
+      const tailLen = TAIL_LENGTH * p.length;
+      const tailX = p.x - (p.vx / PARTICLE_SPEED) * tailLen;
+      const tailY = p.y - (p.vy / PARTICLE_SPEED) * tailLen;
+      pkt.addLine(tailX, tailY, p.x, p.y, p.color, alpha, LINE_WIDTH * 0.5);
+    }
+  }
+
+  _pktCrt(pkt, exp) {
+    const t = exp.elapsed / CRT_LIFE_MS;
+    if (t >= 1) return;
+
+    const frame = Math.min(2, Math.floor(t * 3));
+    const radius = CRT_FRAME_RADII[frame];
+    const alpha = CRT_FRAME_ALPHAS[frame];
+    const maxDist = CRT_SPEED * (CRT_LIFE_MS / 1000);
+
+    for (const p of exp.particles) {
+      const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+      if (speed < 0.01) continue;
+      const dx = p.vx / speed;
+      const dy = p.vy / speed;
+      const dist = maxDist * radius;
+      const px = exp.ox + dx * dist;
+      const py = exp.oy + dy * dist;
+      const stubLen = 4 + frame * 3;
+      const tx = px - dx * stubLen;
+      const ty = py - dy * stubLen;
+      pkt.addLine(tx, ty, px, py, p.color, alpha, (LINE_WIDTH + 0.5) * 0.5);
+    }
+  }
+
   _drawVector(gfx, exp) {
     const lifeRatio = 1 - exp.elapsed / PARTICLE_LIFE_MS;
     if (lifeRatio <= 0) return;

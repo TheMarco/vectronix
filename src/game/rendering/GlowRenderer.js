@@ -4,9 +4,9 @@
  */
 
 const GLOW_PASSES = [
-  { width: 11, alpha: 0.07 },  // wide outer glow, slightly enhanced
-  { width: 5.5, alpha: 0.2 },  // mid-glow, slightly stronger
-  { width: 2, alpha: 1.0 },    // sharp core
+  { width: 6, alpha: 0.04 },   // tight outer glow
+  { width: 3, alpha: 0.15 },   // mid-glow
+  { width: 1.5, alpha: 1.0 },  // sharp core
 ];
 
 export function drawGlowLine(gfx, x1, y1, x2, y2, color, mask = false, passes = GLOW_PASSES) {
@@ -57,6 +57,17 @@ export function drawGlowPolygon(gfx, points, color, mask = false) {
     gfx.closePath();
     gfx.strokePath();
   }
+}
+
+export function drawGlowDot(gfx, cx, cy, color, radius = 1.5) {
+  // Outer glow
+  gfx.fillStyle(color, 0.04);
+  gfx.fillCircle(cx, cy, radius * 3);
+  gfx.fillStyle(color, 0.15);
+  gfx.fillCircle(cx, cy, radius * 2);
+  // Bright core
+  gfx.fillStyle(color, 0.6);
+  gfx.fillCircle(cx, cy, radius);
 }
 
 export function drawGlowDiamond(gfx, cx, cy, size, color) {

@@ -13,9 +13,8 @@ import { applyHoloGlitch } from '../rendering/HoloGlitch.js';
 import { Ufo } from '../entities/Ufo.js';
 import {
   drawGlowLine,
-  drawGlowPolygon,
+  drawGlowDot,
   drawGlowDiamond,
-  drawGlowCircle,
   fillMaskCircle,
 } from '../rendering/GlowRenderer.js';
 import { vectorText } from '../rendering/VectorFont.js';
@@ -725,16 +724,27 @@ export class GameScene extends Phaser.Scene {
     const dt = this.game.loop.delta / 1000;
 
     // ─── RENDER ───
+    // Determine rendering path: GPU packet or CPU Phaser Graphics
+    const overlay = this.game.registry.get('shaderOverlay');
+    this._pkt = overlay && overlay.gpuLinesReady ? overlay.packet : null;
+
+    if (this._pkt) {
+      this._pkt.reset();
+      this._pkt.shakeX = this._shakeOffsetX;
+      this._pkt.shakeY = this._shakeOffsetY;
+    }
+
+    // CPU fallback: clear and position Phaser graphics layers
     this.bgGfx.clear();
     this.maskGfx.clear();
     this.gfx.clear();
-
-    // Apply shake offset to all graphics layers
-    const sx = this._shakeOffsetX;
-    const sy = this._shakeOffsetY;
-    this.bgGfx.setPosition(sx, sy);
-    this.maskGfx.setPosition(sx, sy);
-    this.gfx.setPosition(sx, sy);
+    if (!this._pkt) {
+      const sx = this._shakeOffsetX;
+      const sy = this._shakeOffsetY;
+      this.bgGfx.setPosition(sx, sy);
+      this.maskGfx.setPosition(sx, sy);
+      this.gfx.setPosition(sx, sy);
+    }
 
     this._drawStarfield();
 
@@ -750,7 +760,11 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    this.explosionRenderer.draw(this.gfx);
+    if (this._pkt) {
+      this.explosionRenderer.drawToPacket(this._pkt);
+    } else {
+      this.explosionRenderer.draw(this.gfx);
+    }
 
     // Shield ring around player
     if (this.player.shieldActive && this.player.isVisible) {
@@ -771,10 +785,89 @@ export class GameScene extends Phaser.Scene {
       this.hud.showDemoLabel(true);
     }
 
+    // Submit packet for GPU rendering
+    if (this._pkt) {
+      overlay.submitPacket(this._pkt);
+    }
+
     this.hud.update(
       dt, this.score, this.player.lives, this.waveSystem.waveNumber,
       this.gameOver, this._demoMode, this._stats
     );
+  }
+
+  // ═════════════════════════════════════════════════════════════════
+  // Dual-path rendering adapters (GPU packet or CPU Phaser Graphics)
+  // ═════════════════════════════════════════════════════════════════
+
+  _glowLine(x1, y1, x2, y2, color, mask = false, passes = null) {
+    if (this._pkt) {
+      this._pkt.glowLine(x1, y1, x2, y2, color, mask, passes);
+    } else {
+      drawGlowLine(this.gfx, x1, y1, x2, y2, color, mask, passes || undefined);
+    }
+  }
+
+  _maskCircle(cx, cy, radius) {
+    if (this._pkt) {
+      this._pkt.addMaskCircle(cx, cy, radius);
+    } else {
+      fillMaskCircle(this.maskGfx, cx, cy, radius);
+    }
+  }
+
+  _glowDiamond(cx, cy, size, color) {
+    if (this._pkt) {
+      this._pkt.glowDiamond(cx, cy, size, color);
+    } else {
+      drawGlowDiamond(this.gfx, cx, cy, size, color);
+    }
+  }
+
+  _starLine(x1, y1, x2, y2, color, alpha, halfWidth) {
+    if (this._pkt) {
+      this._pkt.addBgLine(x1, y1, x2, y2, color, alpha, halfWidth);
+    } else {
+      this.bgGfx.lineStyle(halfWidth * 2, color, alpha);
+      this.bgGfx.beginPath();
+      this.bgGfx.moveTo(x1, y1);
+      this.bgGfx.lineTo(x2, y2);
+      this.bgGfx.strokePath();
+    }
+  }
+
+  _glowDot(x, y, color) {
+    if (this._pkt) {
+      // GPU packet path: draw as a very short line (dot approximation)
+      this._pkt.glowLine(x, y, x + 0.5, y + 0.5, color, false, [
+        { width: 4.5, alpha: 0.04 },
+        { width: 3, alpha: 0.15 },
+        { width: 1.5, alpha: 0.6 },
+      ]);
+    } else {
+      drawGlowDot(this.gfx, x, y, color);
+    }
+  }
+
+  _drawVertexDots(lines, colorFn) {
+    // Skip in CRT mode — discrete pixel art aesthetic doesn't benefit from vertex bloom
+    const ov = this.game.registry.get('shaderOverlay');
+    if (ov && ov.getShaderName() === 'crt') return;
+
+    // Collect unique endpoints (snap to 1px grid to deduplicate nearby vertices)
+    const seen = new Set();
+    for (const line of lines) {
+      const k1 = (Math.round(line.x1) << 16) | (Math.round(line.y1) & 0xFFFF);
+      if (!seen.has(k1)) {
+        seen.add(k1);
+        this._glowDot(line.x1, line.y1, colorFn(line));
+      }
+      const k2 = (Math.round(line.x2) << 16) | (Math.round(line.y2) & 0xFFFF);
+      if (!seen.has(k2)) {
+        seen.add(k2);
+        this._glowDot(line.x2, line.y2, colorFn(line));
+      }
+    }
   }
 
   _buildRenderList() {
@@ -858,7 +951,7 @@ export class GameScene extends Phaser.Scene {
     switch (item.type) {
       case 'player': {
         const size = CONFIG.PLAYER_SIZE * item.scale;
-        fillMaskCircle(this.maskGfx, item.screenX, item.screenY, size * 0.8);
+        this._maskCircle(item.screenX, item.screenY, size * 0.8);
         break;
       }
       case 'enemy': {
@@ -870,17 +963,17 @@ export class GameScene extends Phaser.Scene {
           else maskScale = 1.0;
         }
         const size = 16 * maskScale;
-        fillMaskCircle(this.maskGfx, item.screenX, item.screenY, size);
+        this._maskCircle(item.screenX, item.screenY, size);
         break;
       }
       case 'capturedShip': {
         const size = CONFIG.PLAYER_SIZE * item.scale * 0.7;
-        fillMaskCircle(this.maskGfx, item.screenX, item.screenY, size);
+        this._maskCircle(item.screenX, item.screenY, size);
         break;
       }
       case 'ufo': {
         const size = 14 * item.scale;
-        fillMaskCircle(this.maskGfx, item.screenX, item.screenY, size);
+        this._maskCircle(item.screenX, item.screenY, size);
         break;
       }
     }
@@ -908,9 +1001,9 @@ export class GameScene extends Phaser.Scene {
     if (this.riskMultiplier > 1.0) {
       const boost = (this.riskMultiplier - 1.0) * 0.05;
       passes = [
-        { width: 11, alpha: 0.07 + boost },
-        { width: 5.5, alpha: 0.2 + boost },
-        { width: 2, alpha: 1.0 },
+        { width: 6, alpha: 0.07 + boost },
+        { width: 3, alpha: 0.2 + boost },
+        { width: 1.5, alpha: 1.0 },
       ];
     }
 
@@ -920,11 +1013,11 @@ export class GameScene extends Phaser.Scene {
       const col = line.c === 3 ? CONFIG.COLORS.PLAYER_RED
         : line.c === 2 ? CONFIG.COLORS.PLAYER_BLUE
         : CONFIG.COLORS.PLAYER;
-      drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col, false, passes);
+      this._glowLine(line.x1, line.y1, line.x2, line.y2, col, false, passes);
     }
     for (const line of lines) {
       if (line.c !== 1) continue;
-      drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, CONFIG.COLORS.PLAYER_WHITE, false, passes);
+      this._glowLine(line.x1, line.y1, line.x2, line.y2, CONFIG.COLORS.PLAYER_WHITE, false, passes);
     }
 
     // Dual nacelle thrust (nacelle centers at ±5.5 model units, bottom at y=9)
@@ -933,22 +1026,30 @@ export class GameScene extends Phaser.Scene {
     const thrustLen = 6 * item.scale * flicker;
     const engineY = item.screenY + 9 * s;
     const nacX = 5.5 * s;
-    drawGlowLine(this.gfx,
+    this._glowLine(
       item.screenX - nacX - 0.8 * s, engineY,
       item.screenX - nacX, engineY + thrustLen,
       CONFIG.COLORS.PLAYER_THRUST);
-    drawGlowLine(this.gfx,
+    this._glowLine(
       item.screenX - nacX + 0.8 * s, engineY,
       item.screenX - nacX, engineY + thrustLen,
       CONFIG.COLORS.PLAYER_THRUST);
-    drawGlowLine(this.gfx,
+    this._glowLine(
       item.screenX + nacX - 0.8 * s, engineY,
       item.screenX + nacX, engineY + thrustLen,
       CONFIG.COLORS.PLAYER_THRUST);
-    drawGlowLine(this.gfx,
+    this._glowLine(
       item.screenX + nacX + 0.8 * s, engineY,
       item.screenX + nacX, engineY + thrustLen,
       CONFIG.COLORS.PLAYER_THRUST);
+
+    // Vertex dots at wireframe joints
+    this._drawVertexDots(lines, (line) => {
+      if (line.c === 1) return CONFIG.COLORS.PLAYER_WHITE;
+      if (line.c === 3) return CONFIG.COLORS.PLAYER_RED;
+      if (line.c === 2) return CONFIG.COLORS.PLAYER_BLUE;
+      return CONFIG.COLORS.PLAYER;
+    });
   }
 
   _drawEnemy(item) {
@@ -1001,9 +1102,9 @@ export class GameScene extends Phaser.Scene {
     let enemyPasses = undefined;
     if (enemy.isPreDive) {
       enemyPasses = [
-        { width: 11 * 1.3, alpha: 0.07 },
-        { width: 5.5 * 1.3, alpha: 0.2 },
-        { width: 2 * 1.3, alpha: 1.0 },
+        { width: 6 * 1.3, alpha: 0.07 },
+        { width: 3 * 1.3, alpha: 0.2 },
+        { width: 1.5 * 1.3, alpha: 1.0 },
       ];
     }
 
@@ -1011,34 +1112,38 @@ export class GameScene extends Phaser.Scene {
     const alpha = enemy.phantomAlpha;
     if (alpha < 1) {
       const phantomPasses = [
-        { width: 11, alpha: 0.07 * alpha },
-        { width: 5.5, alpha: 0.2 * alpha },
-        { width: 2, alpha: alpha },
+        { width: 6, alpha: 0.07 * alpha },
+        { width: 3, alpha: 0.2 * alpha },
+        { width: 1.5, alpha: alpha },
       ];
       for (const line of lines) {
         const col = line.c ? enemy.color2 : enemy.color;
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col, false, phantomPasses);
+        this._glowLine(line.x1, line.y1, line.x2, line.y2, col, false, phantomPasses);
       }
     } else {
       for (const line of lines) {
         const col = line.c ? enemy.color2 : enemy.color;
-        drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col, false, enemyPasses);
+        this._glowLine(line.x1, line.y1, line.x2, line.y2, col, false, enemyPasses);
       }
     }
 
+    // Vertex dots at wireframe joints
+    this._drawVertexDots(lines, (line) => line.c ? enemy.color2 : enemy.color);
   }
 
   _drawUfo(item) {
     const lines = projectModelFlat(UFO_SAUCER, item.screenX, item.screenY, item.scale * 1.6);
     for (const line of lines) {
       const col = line.c ? CONFIG.COLORS_2.UFO : CONFIG.COLORS.UFO;
-      drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, col);
+      this._glowLine(line.x1, line.y1, line.x2, line.y2, col);
     }
+    // Vertex dots at wireframe joints
+    this._drawVertexDots(lines, (line) => line.c ? CONFIG.COLORS_2.UFO : CONFIG.COLORS.UFO);
   }
 
   _drawPlayerBullet(item) {
     const len = 8 * item.scale;
-    drawGlowLine(this.gfx,
+    this._glowLine(
       item.screenX, item.screenY - len,
       item.screenX, item.screenY + len,
       CONFIG.COLORS.BULLET_PLAYER);
@@ -1046,7 +1151,7 @@ export class GameScene extends Phaser.Scene {
 
   _drawEnemyBullet(item) {
     const size = 3 * item.scale;
-    drawGlowDiamond(this.gfx, item.screenX, item.screenY, size, CONFIG.COLORS.BULLET_ENEMY);
+    this._glowDiamond(item.screenX, item.screenY, size, CONFIG.COLORS.BULLET_ENEMY);
   }
 
   _drawTractorBeam(item) {
@@ -1079,6 +1184,11 @@ export class GameScene extends Phaser.Scene {
       // Subtle horizontal shimmer
       const shimmer = Math.sin(time * 6 + i * 2.4) * 3 * t;
 
+      const beamPasses = [
+        { width: 11, alpha: 0.07 * alpha },
+        { width: 5.5, alpha: 0.2 * alpha },
+        { width: 2, alpha: 1.0 * alpha },
+      ];
       for (let s = 0; s < segments; s++) {
         const a0 = s / segments;
         const a1 = (s + 1) / segments;
@@ -1088,12 +1198,7 @@ export class GameScene extends Phaser.Scene {
         const x1 = bossX + shimmer + u1 * halfW;
         const y0 = arcY + sag * (1 - u0 * u0);
         const y1 = arcY + sag * (1 - u1 * u1);
-        this.gfx.lineStyle(11, color, 0.07 * alpha);
-        this.gfx.beginPath(); this.gfx.moveTo(x0, y0); this.gfx.lineTo(x1, y1); this.gfx.strokePath();
-        this.gfx.lineStyle(5.5, color, 0.2 * alpha);
-        this.gfx.beginPath(); this.gfx.moveTo(x0, y0); this.gfx.lineTo(x1, y1); this.gfx.strokePath();
-        this.gfx.lineStyle(2, color, 1.0 * alpha);
-        this.gfx.beginPath(); this.gfx.moveTo(x0, y0); this.gfx.lineTo(x1, y1); this.gfx.strokePath();
+        this._glowLine(x0, y0, x1, y1, color, false, beamPasses);
       }
     }
   }
@@ -1109,8 +1214,10 @@ export class GameScene extends Phaser.Scene {
     }
     const lines = projectModelFlat(PLAYER_SHIP, item.screenX, item.screenY, item.scale * 1.1, rotation);
     for (const line of lines) {
-      drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, color);
+      this._glowLine(line.x1, line.y1, line.x2, line.y2, color);
     }
+    // Vertex dots at wireframe joints
+    this._drawVertexDots(lines, () => color);
   }
 
   _checkExtraLife() {
@@ -1136,8 +1243,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   _drawShieldRing() {
-    const px = this.player.x + this._shakeOffsetX;
-    const py = this.player.y + this._shakeOffsetY;
+    const px = this.player.x;
+    const py = this.player.y;
     const pulse = Math.sin(performance.now() * 0.004) * 0.35 + 0.65;
     const radius = 36;
     const segments = 12;
@@ -1148,7 +1255,7 @@ export class GameScene extends Phaser.Scene {
       const y1 = py + Math.sin(a1) * radius;
       const x2 = px + Math.cos(a2) * radius;
       const y2 = py + Math.sin(a2) * radius;
-      drawGlowLine(this.gfx, x1, y1, x2, y2, CONFIG.COLORS.TRACTOR_BEAM, false, [
+      this._glowLine(x1, y1, x2, y2, CONFIG.COLORS.TRACTOR_BEAM, false, [
         { width: 10, alpha: 0.06 * pulse },
         { width: 5, alpha: 0.18 * pulse },
         { width: 2, alpha: pulse },
@@ -1226,7 +1333,7 @@ export class GameScene extends Phaser.Scene {
     const lines = vectorText(text, x, y, scale);
     const color = 0x88ddff;
     for (const line of lines) {
-      drawGlowLine(this.gfx, line.x1, line.y1, line.x2, line.y2, color);
+      this._glowLine(line.x1, line.y1, line.x2, line.y2, color);
     }
   }
 
@@ -1245,13 +1352,7 @@ export class GameScene extends Phaser.Scene {
         { width: 2, alpha: 1.0 * alpha },
       ];
       for (const line of lines) {
-        for (const pass of passes) {
-          this.gfx.lineStyle(pass.width, color, pass.alpha);
-          this.gfx.beginPath();
-          this.gfx.moveTo(line.x1, line.y1);
-          this.gfx.lineTo(line.x2, line.y2);
-          this.gfx.strokePath();
-        }
+        this._glowLine(line.x1, line.y1, line.x2, line.y2, color, false, passes);
       }
     }
   }
@@ -1259,11 +1360,7 @@ export class GameScene extends Phaser.Scene {
   _drawStarfield() {
     for (const star of this._stars) {
       const streakLen = star.speed * 0.08;
-      this.bgGfx.lineStyle(star.size, star.color, star.brightness);
-      this.bgGfx.beginPath();
-      this.bgGfx.moveTo(star.x, star.y);
-      this.bgGfx.lineTo(star.x, star.y + streakLen);
-      this.bgGfx.strokePath();
+      this._starLine(star.x, star.y, star.x, star.y + streakLen, star.color, star.brightness, star.size * 0.5);
     }
   }
 }
