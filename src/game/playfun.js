@@ -18,8 +18,23 @@ function loadScript(src) {
   });
 }
 
+function isPlayFunEmbed() {
+  if (window === window.top) return false;
+  try {
+    const ancestorOrigins = window.location.ancestorOrigins;
+    if (ancestorOrigins && ancestorOrigins.length > 0) {
+      return ancestorOrigins[0].endsWith('.play.fun') || ancestorOrigins[0] === 'https://play.fun';
+    }
+  } catch (_) { /* cross-origin, fall through */ }
+  // Fallback: check referrer
+  try {
+    const ref = document.referrer && new URL(document.referrer);
+    return ref && (ref.hostname === 'play.fun' || ref.hostname.endsWith('.play.fun'));
+  } catch (_) { return false; }
+}
+
 export async function init() {
-  if (!GAME_ID || window === window.top) return;
+  if (!GAME_ID || !isPlayFunEmbed()) return;
 
   try {
     await loadScript('https://sdk.play.fun');
