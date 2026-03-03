@@ -21,14 +21,17 @@ const crtFragmentSource = `
 precision mediump float;
 
 uniform sampler2D u_texture;
+uniform sampler2D u_prevFrame;
+uniform sampler2D u_bloom;
 uniform vec2 u_resolution;
 uniform float u_time;
+uniform float u_phosphorDecay;
 
 varying vec2 v_texCoord;
 
 #define PI 3.14159265359
-#define BLOOM_STRENGTH 0.65
-#define HALATION_STRENGTH 0.35
+#define BLOOM_STRENGTH 0.40
+#define HALATION_STRENGTH 0.20
 #define MASK_STRENGTH 0.12
 #define NOISE_STRENGTH 0.003
 #define FLICKER_STRENGTH 0.08
@@ -40,6 +43,7 @@ const vec2 vTexel = vec2(1.0 / 256.0, 1.0 / 224.0);
 
 vec3 toLinear(vec3 c) { return c * c; }
 vec3 toGamma(vec3 c) { return sqrt(c); }
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
 vec3 noise3(vec2 co, float t) {
   float r = fract(sin(dot(co + t, vec2(12.9898, 78.233))) * 43758.5453);
@@ -96,7 +100,7 @@ void main() {
   // Per-scanline horizontal jitter — analog H-sync timing imprecision
   float jitterLine = floor(curved.y * vRes.y);
   float hJitter = fract(sin(jitterLine * 54.37 + floor(u_time * 12.0) * 7.13) * 43758.5) - 0.5;
-  curved.x += hJitter * 0.0008;
+  curved.x += hJitter * 0.001;
 
   const float margin = 0.001;
   if (curved.x < -margin || curved.x > 1.0 + margin ||
@@ -105,6 +109,14 @@ void main() {
     return;
   }
   curved = clamp(curved, 0.0, 1.0);
+
+  // Dynamic bloom: estimate screen load from external bloom texture
+  vec3 loadSampleCrt = texture2D(u_bloom, vec2(0.25, 0.75)).rgb
+                     + texture2D(u_bloom, vec2(0.75, 0.75)).rgb
+                     + texture2D(u_bloom, vec2(0.25, 0.25)).rgb
+                     + texture2D(u_bloom, vec2(0.75, 0.25)).rgb;
+  float screenLoadCrt = luma(loadSampleCrt * 0.25);
+  float dynamicBloom = 1.0 + screenLoadCrt * 0.3;
 
   // Display density — how many screen pixels per virtual scanline
   float pitch = u_resolution.y / vRes.y;
@@ -122,16 +134,20 @@ void main() {
 
   // NTSC horizontal bandwidth: sub-pixel position shifts blend toward neighbor.
   // Wider blend on small displays for cleaner look.
-  float blendAmt = mix(0.18, 0.10, smoothstep(1.5, 3.0, pitch));
+  float blendAmt = mix(0.12, 0.06, smoothstep(1.5, 3.0, pitch));
   float fx = fract(vPos.x);
   float wL = blendAmt * (1.0 - fx);
   float wR = blendAmt * fx;
   vec3 color = center * (1.0 - wL - wR) + colL * wL + colR * wR;
 
+  // Beam overshoot / ringing at sharp luminance transitions
+  float edgeDet = abs(luma(center) - luma(colL)) + abs(luma(center) - luma(colR));
+  color += (center - (colL + colR) * 0.5) * edgeDet * 0.15;
+
   // ── 2 & 3. Bloom + halation ──
   // Tight bloom (1 virtual-pixel radius)
   vec3 tightBlur = getBlur(pxCenter);
-  color += max(tightBlur - 0.6, 0.0) * 2.5 * BLOOM_STRENGTH;
+  color += max(tightBlur - 0.6, 0.0) * 2.5 * BLOOM_STRENGTH * dynamicBloom;
 
   // Wide halation (3 virtual-pixel radius) — diffuse glass glow
   vec2 ht = vTexel * 3.0;
@@ -139,14 +155,14 @@ void main() {
                 + toLinear(texture2D(u_texture, pxCenter + vec2( ht.x, 0.0)).rgb)
                 + toLinear(texture2D(u_texture, pxCenter + vec2(0.0, -ht.y)).rgb)
                 + toLinear(texture2D(u_texture, pxCenter + vec2(0.0,  ht.y)).rgb);
-  color += max(halation * 0.25 - 0.45, 0.0) * 1.5 * HALATION_STRENGTH;
+  color += max(halation * 0.25 - 0.45, 0.0) * 1.5 * HALATION_STRENGTH * dynamicBloom;
 
   // ── 4. Gaussian beam scanlines with brightness-dependent bloom ──
   float virtualY = curved.y * vRes.y;
   float d = fract(virtualY) - 0.5;
 
   // Base sigma: narrow on large displays (visible gaps), wide on small (merge)
-  float baseSigma = mix(0.55, 0.28, smoothstep(1.5, 3.0, pitch));
+  float baseSigma = mix(0.45, 0.24, smoothstep(1.5, 3.0, pitch));
 
   // Bright content blooms the beam wider — distinctive CRT characteristic
   float bright = max(max(color.r, color.g), color.b);
@@ -157,28 +173,41 @@ void main() {
   // Fade scanlines out below ~2px pitch to prevent moire
   color *= mix(1.0, beam, smoothstep(1.0, 2.0, pitch));
 
-  // ── 5. Aperture grille (Trinitron-style vertical RGB stripes, pitch-adaptive) ──
-  // Adapt grille period to display pitch: ~3 physical pixels per stripe, multiples of 3
-  float grillePeriod = max(3.0, floor(pitch * 0.8 / 3.0 + 0.5) * 3.0);
-  float mx = mod(gl_FragCoord.x, grillePeriod);
-  float oneThird = grillePeriod / 3.0;
-  float twoThirds = grillePeriod * 2.0 / 3.0;
+  // ── 5. Aperture grille (Trinitron-style vertical RGB stripes) ──
+  float mx = mod(gl_FragCoord.x, 3.0);
   vec3 mask;
-  if (mx < oneThird) {
+  if (mx < 1.0) {
     mask = vec3(1.0 + MASK_STRENGTH, 1.0 - MASK_STRENGTH * 0.5, 1.0 - MASK_STRENGTH * 0.5);
-  } else if (mx < twoThirds) {
+  } else if (mx < 2.0) {
     mask = vec3(1.0 - MASK_STRENGTH * 0.5, 1.0 + MASK_STRENGTH, 1.0 - MASK_STRENGTH * 0.5);
   } else {
     mask = vec3(1.0 - MASK_STRENGTH * 0.5, 1.0 - MASK_STRENGTH * 0.5, 1.0 + MASK_STRENGTH);
   }
   // Thin dark separator between triads
-  float sep = smoothstep(0.0, 0.5, mx) * smoothstep(grillePeriod, grillePeriod - 0.5, mx);
+  float sep = smoothstep(0.0, 0.5, mx) * smoothstep(3.0, 2.5, mx);
   mask *= mix(0.88, 1.0, sep);
   // Fade mask on small displays to avoid aliasing
   color *= mix(vec3(1.0), mask, smoothstep(1.0, 2.0, pitch));
 
+  // Moire shimmer — subtle interference between aperture grille and scanlines
+  float moirePhase = sin(curved.y * vRes.y * PI + mx * PI * 0.667 + u_time * 2.0);
+  color *= 1.0 + moirePhase * 0.008;
+
+  // ── 5b. RGB convergence error at screen edges ──
+  float convergeDist = length(curved - 0.5);
+  float convergeAmt = convergeDist * convergeDist * 0.008;
+  vec2 convergeDir = normalize(curved - 0.5 + 0.001);
+  vec2 rUV = clamp(curved + convergeDir * convergeAmt, 0.0, 1.0);
+  vec2 bUV = clamp(curved - convergeDir * convergeAmt, 0.0, 1.0);
+  color.r = mix(color.r, toLinear(texture2D(u_texture, rUV).rgb).r, 0.6);
+  color.b = mix(color.b, toLinear(texture2D(u_texture, bUV).rgb).b, 0.6);
+
   // ── 6. Warm color temperature (consumer NTSC TV) ──
-  color *= vec3(1.08, 1.02, 0.90);
+  color *= vec3(0.96, 0.93, 0.88);
+
+  // ── 6b. Saturation boost ──
+  float gray = dot(color, vec3(0.299, 0.587, 0.114));
+  color = mix(vec3(gray), color, 1.08);
 
   // ── 7. Interlace flicker ──
   // Very subtle even/odd scanline brightness alternation per frame
@@ -197,22 +226,20 @@ void main() {
   float band = smoothstep(0.0, 0.15, bandPos) * smoothstep(0.45, 0.15, bandPos);
   color *= 1.0 + band * 0.12;
 
-  // Coarse analog RGB noise (3x3 pixel clumps)
-  color += noise3(floor(gl_FragCoord.xy / 3.0), u_time) * NOISE_STRENGTH;
+  // Analog RGB noise at virtual pixel resolution
+  color += noise3(floor(vPos), u_time) * NOISE_STRENGTH;
 
   // Power supply flicker
   float flicker = sin(u_time * 13.7) * 0.5 + sin(u_time * 7.3) * 0.3 + sin(u_time * 23.1) * 0.2;
   float cb = max(max(color.r, color.g), color.b);
   color *= 1.0 + flicker * FLICKER_STRENGTH * (1.0 + cb * 0.5);
 
-  // Drifting specular reflection off glass surface
-  vec2 crtReflectCenter = vec2(sin(u_time * 0.13) * 0.25, cos(u_time * 0.09) * 0.15) + vec2(0.3, 0.25);
-  float crtReflectDist = length(curved - crtReflectCenter);
-  float crtReflectGlare = exp(crtReflectDist * -8.0) * 0.012;
-  color += vec3(crtReflectGlare * 1.1, crtReflectGlare, crtReflectGlare * 0.9);
+  // CRT phosphor persistence (P22 — short 2-3 frame trails)
+  vec3 prevCrt = toLinear(texture2D(u_prevFrame, vec2(uv.x, 1.0 - uv.y)).rgb);
+  color = max(color, prevCrt * u_phosphorDecay);
 
   color *= cornerMask;
-  gl_FragColor = vec4(clamp(toGamma(color), 0.0, 1.0), 1.0);
+  gl_FragColor = vec4(clamp(toGamma(color), 0.0, 1.0), 0.0);
 }
 `;
 
@@ -401,22 +428,25 @@ vec3 vectorColorGrade(vec3 src) {
 vec3 defocusedSample(vec2 uv) {
   vec2 fromCenter = uv - 0.5;
   float edgeDist = dot(fromCenter, fromCenter) * 2.0;
-  float defocusRadius = edgeDist * 1.5;
+  vec3 centerSample = texture2D(u_texture, uv).rgb;
+  float bright = luma(centerSample);
+  float defocusRadius = edgeDist * 3.0 + bright * 1.5;
 
-  vec3 sharp = texture2D(u_texture, uv).rgb;
+  if (defocusRadius < 0.3) {
+    return texture2D(u_texture, uv).rgb;
+  }
 
   float r = defocusRadius;
-  vec3 blurred = sharp * 0.40;
-  blurred += texture2D(u_texture, clamp(uv + vec2(-texel.x * r, 0.0), 0.0, 1.0)).rgb * 0.10;
-  blurred += texture2D(u_texture, clamp(uv + vec2( texel.x * r, 0.0), 0.0, 1.0)).rgb * 0.10;
-  blurred += texture2D(u_texture, clamp(uv + vec2(0.0, -texel.y * r), 0.0, 1.0)).rgb * 0.10;
-  blurred += texture2D(u_texture, clamp(uv + vec2(0.0,  texel.y * r), 0.0, 1.0)).rgb * 0.10;
-  blurred += texture2D(u_texture, clamp(uv + vec2(-texel.x * r, -texel.y * r) * 0.7, 0.0, 1.0)).rgb * 0.05;
-  blurred += texture2D(u_texture, clamp(uv + vec2( texel.x * r, -texel.y * r) * 0.7, 0.0, 1.0)).rgb * 0.05;
-  blurred += texture2D(u_texture, clamp(uv + vec2(-texel.x * r,  texel.y * r) * 0.7, 0.0, 1.0)).rgb * 0.05;
-  blurred += texture2D(u_texture, clamp(uv + vec2( texel.x * r,  texel.y * r) * 0.7, 0.0, 1.0)).rgb * 0.05;
-
-  return mix(sharp, blurred, smoothstep(0.5, 0.8, defocusRadius));
+  vec3 sum = texture2D(u_texture, uv).rgb * 0.40;
+  sum += texture2D(u_texture, clamp(uv + vec2(-texel.x * r, 0.0), 0.0, 1.0)).rgb * 0.10;
+  sum += texture2D(u_texture, clamp(uv + vec2( texel.x * r, 0.0), 0.0, 1.0)).rgb * 0.10;
+  sum += texture2D(u_texture, clamp(uv + vec2(0.0, -texel.y * r), 0.0, 1.0)).rgb * 0.10;
+  sum += texture2D(u_texture, clamp(uv + vec2(0.0,  texel.y * r), 0.0, 1.0)).rgb * 0.10;
+  sum += texture2D(u_texture, clamp(uv + vec2(-texel.x * r, -texel.y * r) * 0.7, 0.0, 1.0)).rgb * 0.05;
+  sum += texture2D(u_texture, clamp(uv + vec2( texel.x * r, -texel.y * r) * 0.7, 0.0, 1.0)).rgb * 0.05;
+  sum += texture2D(u_texture, clamp(uv + vec2(-texel.x * r,  texel.y * r) * 0.7, 0.0, 1.0)).rgb * 0.05;
+  sum += texture2D(u_texture, clamp(uv + vec2( texel.x * r,  texel.y * r) * 0.7, 0.0, 1.0)).rgb * 0.05;
+  return sum;
 }
 
 void main() {
@@ -440,32 +470,35 @@ void main() {
   // Core RGB sample with edge defocus
   vec3 core = defocusedSample(curved);
 
-  // Color grade — saturation-aware: blue phosphor for neutrals, vivid pass-through for saturated
-  vec3 graded = vectorColorGrade(core);
-  vec3 origHsv = rgb2hsv(core);
-  float satPreserve = smoothstep(0.10, 0.3, origHsv.y);
-  vec3 boosted = core * 1.6;
-  vec3 color = mix(graded, boosted, satPreserve);
+  // Color grade the core sample
+  vec3 color = vectorColorGrade(core);
 
-  // Saturation boost
-  float lumC = luma(color);
-  color = mix(vec3(lumC), color, 1.35);
+  // Deflection brightness boost — beam brightens at screen edges
+  vec2 fromCenter = curved - 0.5;
+  float deflectionBoost = 1.0 + dot(fromCenter, fromCenter) * 0.15;
+  color *= deflectionBoost;
 
-  // Sample bloom texture (half-res, already blurred) — use raw, no color grade
+  // Sample bloom texture (half-res, already blurred) and color grade it too
   // Flip Y: bloom is in an FBO (GL convention Y=0 at bottom) while curved
   // coords are set up for HTML canvas textures (Y=0 at top via quad flip)
   vec3 bloomSample = texture2D(u_bloom, vec2(curved.x, 1.0 - curved.y)).rgb;
+  vec3 bloomGraded = vectorColorGrade(bloomSample);
 
-  // Add bloom — very tight (GlowRenderer already provides line-level glow)
-  color += bloomSample * 0.04;
+  // Dynamic bloom — per-channel colored bloom, load-dependent
+  vec3 loadSampleVec = texture2D(u_bloom, vec2(0.25, 0.75)).rgb
+                     + texture2D(u_bloom, vec2(0.75, 0.75)).rgb
+                     + texture2D(u_bloom, vec2(0.25, 0.25)).rgb
+                     + texture2D(u_bloom, vec2(0.75, 0.25)).rgb;
+  float screenLoadVec = luma(loadSampleVec * 0.25);
+  float dynamicBloomVec = 0.22 * (1.0 + screenLoadVec * 0.3);
+  color += bloomGraded * dynamicBloomVec;
 
   // Chromatic aberration — subtle RGB split on bright areas, proportional to edge distance
-  vec2 fromCenter = curved - 0.5;
   float caStrength = dot(fromCenter, fromCenter) * 0.008;
   if (caStrength > 0.0005) {
     vec2 caOffset = fromCenter * caStrength;
-    float rShift = luma(texture2D(u_texture, clamp(curved + caOffset, 0.0, 1.0)).rgb);
-    float bShift = luma(texture2D(u_texture, clamp(curved - caOffset, 0.0, 1.0)).rgb);
+    float rShift = luma(vectorColorGrade(texture2D(u_texture, clamp(curved + caOffset, 0.0, 1.0)).rgb));
+    float bShift = luma(vectorColorGrade(texture2D(u_texture, clamp(curved - caOffset, 0.0, 1.0)).rgb));
     // Blend shifted channels
     color.r = mix(color.r, color.r * (1.0 + (rShift - luma(color)) * 0.3), 0.5);
     color.b = mix(color.b, color.b * (1.0 + (bShift - luma(color)) * 0.3), 0.5);
@@ -482,13 +515,13 @@ void main() {
   vec2 glassCoord = curved * 2.0 - 1.0;
   float glassHighlight = 1.0 - dot(glassCoord, glassCoord) * 0.5;
   glassHighlight = max(glassHighlight, 0.0);
-  color += vec3(0.001, 0.0015, 0.003) * glassHighlight;
+  color += vec3(0.002, 0.003, 0.006) * glassHighlight;
 
   // Faint blue hue — vector CRT phosphor glass tint
   float blueVar = 0.7 + 0.3 * sin(u_time * 0.4 + curved.y * 4.0 + curved.x * 2.5);
   float blueNoise = hash2(floor(gl_FragCoord.xy * 0.5)) * 0.15;
-  vec3 blueTint = vec3(0.01, 0.015, 0.04) * (blueVar + blueNoise);
-  float blueGate = smoothstep(0.03, 0.5, luma(color));
+  vec3 blueTint = vec3(0.02, 0.03, 0.08) * (blueVar + blueNoise);
+  float blueGate = max(0.55, smoothstep(0.15, 1.0, luma(color)));
   color += blueTint * blueGate;
 
   // Subtle analog noise
@@ -499,31 +532,27 @@ void main() {
   float flicker = sin(u_time * 8.3) * 0.008 + sin(u_time * 17.1) * 0.004;
   color *= 1.0 + flicker;
 
-  // Phosphor dot matrix (visible on bright areas only)
-  vec2 dotCoord = gl_FragCoord.xy * 0.5;  // ~2px period
-  float dotX = smoothstep(0.3, 0.5, fract(dotCoord.x));
-  float dotY = smoothstep(0.3, 0.5, fract(dotCoord.y));
-  float dotPattern = dotX * dotY * 0.06 + 0.97;  // 0.97-1.03 range
-  float dotGate = smoothstep(0.15, 0.5, luma(color));
-  color *= mix(1.0, dotPattern, dotGate);
-
-  // Drifting specular reflection off glass surface
-  vec2 reflectCenter = vec2(sin(u_time * 0.13) * 0.25, cos(u_time * 0.09) * 0.15) + vec2(0.3, 0.25);
-  float reflectDist = length(curved - reflectCenter);
-  float reflectGlare = exp(reflectDist * -8.0) * 0.012;
-  color += vec3(reflectGlare * 1.1, reflectGlare, reflectGlare * 0.9);
-
   // Per-channel phosphor persistence (colored trails)
   // Flip Y when reading the FBO
   vec2 jitter = vec2(
     (hash(gl_FragCoord.xy, u_time) - 0.5),
     (hash(gl_FragCoord.yx, u_time + 17.0) - 0.5)
   ) * 0.0004;
-  vec3 prev = texture2D(u_prevFrame, vec2(uv.x, 1.0 - uv.y) + jitter).rgb;
+  vec4 prevFull = texture2D(u_prevFrame, vec2(uv.x, 1.0 - uv.y) + jitter);
+  vec3 prev = prevFull.rgb;
   color = max(color, prev * u_phosphorDecay);
 
+  // Beam dwell glow — bright spots emit extra blue phosphor light
+  float dwell = pow(luma(color), 2.0) * 0.08;
+  color += vec3(0.3, 0.6, 1.0) * dwell;
+
+  // Phosphor burn-in via alpha channel
+  float burnIn = prevFull.a;
+  float newBurnIn = max(burnIn * 0.998, luma(color) * 0.015);
+  color += vec3(0.2, 0.4, 1.0) * newBurnIn * 0.05;
+
   color *= cornerMask;
-  gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+  gl_FragColor = vec4(clamp(color, 0.0, 1.0), newBurnIn);
 }
 `;
 
@@ -533,7 +562,8 @@ precision mediump float;
 uniform sampler2D u_texture;
 varying vec2 v_texCoord;
 void main() {
-  gl_FragColor = texture2D(u_texture, vec2(v_texCoord.x, 1.0 - v_texCoord.y));
+  vec4 c = texture2D(u_texture, vec2(v_texCoord.x, 1.0 - v_texCoord.y));
+  gl_FragColor = vec4(c.rgb, 1.0);
 }
 `;
 
@@ -573,22 +603,25 @@ function buildProgram(gl, vertSrc, fragSrc) {
 }
 
 export async function createShaderOverlay(gameCanvas) {
-  // ── WebGPU detection (Phase 0 guardrail) ──
-  const gpuReady = await hasWebGPU();
+  // ── WebGPU detection ──
+  const forceWebGL = new URLSearchParams(window.location.search).has('webgl');
+  const gpuReady = forceWebGL ? false : await hasWebGPU();
   if (gpuReady) {
     console.log('[shaderOverlay] WebGPU available — attempting TSL pipeline');
     const { createWebGPUOverlay } = await import('../rendering/gpu/WebGPUOverlay.js');
     const gpuOverlay = await createWebGPUOverlay(gameCanvas);
     if (gpuOverlay) {
       console.log('[shaderOverlay] WebGPU overlay active');
+      document.title = document.title + ' [WebGPU]';
       return gpuOverlay;
     }
     console.warn('[shaderOverlay] WebGPU overlay failed, falling back to WebGL');
   } else {
     console.log('[shaderOverlay] WebGPU not available — using WebGL fallback');
   }
+  document.title = document.title + ' [WebGL]';
 
-  // ── WebGL overlay (current shipping pipeline) ──
+  // ── WebGL overlay ──
   const overlay = document.createElement('canvas');
   overlay.style.position = 'absolute';
   overlay.style.pointerEvents = 'none';
@@ -631,7 +664,13 @@ export async function createShaderOverlay(gameCanvas) {
   const compositeUPrevFrame = gl.getUniformLocation(programs.vectorComposite.program, 'u_prevFrame');
   const compositeUPhosphorDecay = gl.getUniformLocation(programs.vectorComposite.program, 'u_phosphorDecay');
 
-  let currentPhosphorDecay = 0.20;
+  // Cache CRT uniform locations for multi-pass pipeline
+  const crtUTexture = gl.getUniformLocation(programs.crt.program, 'u_texture');
+  const crtUPrevFrame = gl.getUniformLocation(programs.crt.program, 'u_prevFrame');
+  const crtUBloom = gl.getUniformLocation(programs.crt.program, 'u_bloom');
+  const crtUPhosphorDecay = gl.getUniformLocation(programs.crt.program, 'u_phosphorDecay');
+
+  let currentPhosphorDecay = 0.68;
 
   // ── Persist FBOs for phosphor persistence (ping-pong, full-res) ──
   let persistA = null, persistB = null;
@@ -823,16 +862,87 @@ export async function createShaderOverlay(gameCanvas) {
 
       pingPong = 1 - pingPong;
     } else {
-      // ── CRT mode: single-pass, no persistence ──
-      activateProgram(programs.crt);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0, 0, overlay.width, overlay.height);
+      // ── CRT mode: 5-pass pipeline (bloom + blur + composite + persistence + blit) ──
+      ensurePersistFBOs(overlay.width, overlay.height);
+      ensureBloomFBOs(overlay.width, overlay.height);
+
+      // ── Pass 1: Bloom downsample + threshold → bloomA ──
+      activateProgram(programs.bloomDownsample);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bloomA.fb);
+      gl.viewport(0, 0, bloomW, bloomH);
       gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.uniform1i(gl.getUniformLocation(programs.bloomDownsample.program, 'u_texture'), 0);
+      gl.uniform2f(programs.bloomDownsample.uResolution, gameCanvas.width, gameCanvas.height);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // ── Pass 2: Horizontal Gaussian blur → bloomB ──
+      activateProgram(programs.blur);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bloomB.fb);
+      gl.viewport(0, 0, bloomW, bloomH);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, bloomA.tex);
+      gl.uniform1i(gl.getUniformLocation(programs.blur.program, 'u_texture'), 0);
+      gl.uniform2f(blurUDirection, 1.0, 0.0);
+      gl.uniform2f(programs.blur.uResolution, bloomW, bloomH);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // ── Pass 3: Vertical Gaussian blur → bloomA ──
+      activateProgram(programs.blur);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bloomA.fb);
+      gl.viewport(0, 0, bloomW, bloomH);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, bloomB.tex);
+      gl.uniform1i(gl.getUniformLocation(programs.blur.program, 'u_texture'), 0);
+      gl.uniform2f(blurUDirection, 0.0, 1.0);
+      gl.uniform2f(programs.blur.uResolution, bloomW, bloomH);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // ── Pass 4: CRT composite → persist FBO ──
+      const crtWriteFBO = pingPong === 0 ? persistA : persistB;
+      const crtReadFBO  = pingPong === 0 ? persistB : persistA;
+
+      activateProgram(programs.crt);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, crtWriteFBO.fb);
+      gl.viewport(0, 0, persistW, persistH);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      // Game canvas on unit 0
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.uniform1i(crtUTexture, 0);
+
+      // Bloom texture on unit 1
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, bloomA.tex);
+      gl.uniform1i(crtUBloom, 1);
+
+      // Previous frame on unit 2
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, crtReadFBO.tex);
+      gl.uniform1i(crtUPrevFrame, 2);
 
       gl.uniform2f(programs.crt.uResolution, overlay.width, overlay.height);
       gl.uniform1f(programs.crt.uTime, now);
+      // CRT phosphor decay: P22 phosphors, much shorter than vector
+      const crtDecay = Math.pow(0.15, dt * 60.0);
+      gl.uniform1f(crtUPhosphorDecay, crtDecay);
 
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // ── Pass 5: Blit persist FBO → screen ──
+      activateProgram(programs.passthrough);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, overlay.width, overlay.height);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, crtWriteFBO.tex);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      pingPong = 1 - pingPong;
     }
 
     requestAnimationFrame(render);
@@ -846,6 +956,14 @@ export async function createShaderOverlay(gameCanvas) {
       if (name === 'crt' || name === 'vector') {
         activeShaderName = name;
         applyTextureFilter(name);
+        // Clear persist FBOs to prevent ghost artifacts from other mode
+        if (persistA && persistB) {
+          for (const fbo of [persistA, persistB]) {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fbo.fb);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+          }
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        }
         try { localStorage.setItem('vectronix-display-mode', name); } catch (e) {}
       }
     },

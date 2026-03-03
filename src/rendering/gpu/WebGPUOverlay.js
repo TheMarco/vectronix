@@ -12,7 +12,7 @@ import {
   WebGPURenderer, NodeMaterial, QuadMesh,
   CanvasTexture, RenderTarget,
   HalfFloatType, LinearFilter, NearestFilter, ClampToEdgeWrapping,
-  Vector2, AdditiveBlending,
+  Vector2,
 } from 'three/webgpu';
 
 import {
@@ -23,8 +23,11 @@ import {
   length, normalize, If, select,
 } from 'three/tsl';
 
-import { LineRenderer } from './LineRenderer.js';
-import { RenderPacket } from '../RenderPacket.js';
+// LineRenderer + RenderPacket: disabled — Three.js WebGPU renderer.render()
+// doesn't reliably render custom instanced geometry via scene/mesh path.
+// GPU line rendering would need a fullscreen-quad fragment shader approach.
+// import { LineRenderer } from './LineRenderer.js';
+// import { RenderPacket } from '../RenderPacket.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // Constants
@@ -177,10 +180,10 @@ function buildBloomDownsampleNode(sourceTex, resolutionU) {
   const texelSize = vec2(1).div(resolutionU);
   const ht = texelSize.mul(0.5);
 
-  const a = texture(sourceTex, uvCoord.add(vec2(ht.x.negate(), ht.y.negate()))).rgb;
-  const b = texture(sourceTex, uvCoord.add(vec2(ht.x, ht.y.negate()))).rgb;
-  const c = texture(sourceTex, uvCoord.add(vec2(ht.x.negate(), ht.y))).rgb;
-  const d = texture(sourceTex, uvCoord.add(vec2(ht.x, ht.y))).rgb;
+  const a = texture(sourceTex,uvCoord.add(vec2(ht.x.negate(), ht.y.negate()))).rgb;
+  const b = texture(sourceTex,uvCoord.add(vec2(ht.x, ht.y.negate()))).rgb;
+  const c = texture(sourceTex,uvCoord.add(vec2(ht.x.negate(), ht.y))).rgb;
+  const d = texture(sourceTex,uvCoord.add(vec2(ht.x, ht.y))).rgb;
   const color = a.add(b).add(c).add(d).mul(0.25);
 
   const lum = dot(color, vec3(0.299, 0.587, 0.114));
@@ -219,54 +222,64 @@ function buildVectorCompositeNode(
   const uvCoord = uv();
   const texel = vec2(FULL_TEXEL_X, FULL_TEXEL_Y);
 
-  // ── Rounded corners ──
-  const cornerDist = tslRoundedRectSDF(uvCoord, vec2(0.96), tslFloat(CORNER_RADIUS));
-  const cornerMask = tslFloat(1).sub(smoothstep(-0.003, 0.005, cornerDist));
+  // ── CRT tube boundary — rounded rectangle SDF (matches WebGL) ──
+  const cornerDist = tslRoundedRectSDF(uvCoord, vec2(0.96, 0.96), tslFloat(CORNER_RADIUS));
+  const cornerMask = tslFloat(1).sub(smoothstep(tslFloat(-0.003), tslFloat(0.005), cornerDist));
 
-  // ── Barrel distortion ──
+  // ── Barrel distortion (content) ──
   const curved = tslCurveUV(uvCoord);
 
-  // ── Edge beam defocus (9-tap weighted blur) ──
+  // ── Edge beam defocus (9-tap, stronger at edges) ──
   const fromCenter = curved.sub(0.5);
   const edgeDist = dot(fromCenter, fromCenter).mul(2.0);
-  const defocusR = edgeDist.mul(1.5);
+  // Beam spot size variation — bright content widens the defocus
+  const centerBright = tslLuma(texture(sourceTex,curved).rgb);
+  const defocusR = edgeDist.mul(1.5).add(centerBright.mul(1.5));
 
   const clampUV = (v) => clamp(v, 0.0, 1.0);
 
-  const sharp = texture(sourceTex, curved).rgb;
-  const defocused = texture(sourceTex, curved).rgb.mul(0.40)
-    .add(texture(sourceTex, clampUV(curved.add(vec2(texel.x.mul(defocusR).negate(), 0)))).rgb.mul(0.10))
-    .add(texture(sourceTex, clampUV(curved.add(vec2(texel.x.mul(defocusR), 0)))).rgb.mul(0.10))
-    .add(texture(sourceTex, clampUV(curved.add(vec2(0, texel.y.mul(defocusR).negate())))).rgb.mul(0.10))
-    .add(texture(sourceTex, clampUV(curved.add(vec2(0, texel.y.mul(defocusR))))).rgb.mul(0.10))
-    .add(texture(sourceTex, clampUV(curved.add(vec2(texel.x.mul(defocusR).negate(), texel.y.mul(defocusR).negate()).mul(0.7)))).rgb.mul(0.05))
-    .add(texture(sourceTex, clampUV(curved.add(vec2(texel.x.mul(defocusR), texel.y.mul(defocusR).negate()).mul(0.7)))).rgb.mul(0.05))
-    .add(texture(sourceTex, clampUV(curved.add(vec2(texel.x.mul(defocusR).negate(), texel.y.mul(defocusR)).mul(0.7)))).rgb.mul(0.05))
-    .add(texture(sourceTex, clampUV(curved.add(vec2(texel.x.mul(defocusR), texel.y.mul(defocusR)).mul(0.7)))).rgb.mul(0.05));
+  // Sharp sample for center, blurred for edges
+  const sharp = texture(sourceTex,curved).rgb;
+  const blurred = texture(sourceTex,curved).rgb.mul(0.40)
+    .add(texture(sourceTex,clampUV(curved.add(vec2(texel.x.mul(defocusR).negate(), 0)))).rgb.mul(0.10))
+    .add(texture(sourceTex,clampUV(curved.add(vec2(texel.x.mul(defocusR), 0)))).rgb.mul(0.10))
+    .add(texture(sourceTex,clampUV(curved.add(vec2(0, texel.y.mul(defocusR).negate())))).rgb.mul(0.10))
+    .add(texture(sourceTex,clampUV(curved.add(vec2(0, texel.y.mul(defocusR))))).rgb.mul(0.10))
+    .add(texture(sourceTex,clampUV(curved.add(vec2(texel.x.mul(defocusR).negate(), texel.y.mul(defocusR).negate()).mul(0.7)))).rgb.mul(0.05))
+    .add(texture(sourceTex,clampUV(curved.add(vec2(texel.x.mul(defocusR), texel.y.mul(defocusR).negate()).mul(0.7)))).rgb.mul(0.05))
+    .add(texture(sourceTex,clampUV(curved.add(vec2(texel.x.mul(defocusR).negate(), texel.y.mul(defocusR)).mul(0.7)))).rgb.mul(0.05))
+    .add(texture(sourceTex,clampUV(curved.add(vec2(texel.x.mul(defocusR), texel.y.mul(defocusR)).mul(0.7)))).rgb.mul(0.05));
 
-  const core = mix(sharp, defocused, smoothstep(0.5, 0.8, defocusR));
+  // Only defocus when radius is significant (center stays sharp)
+  const core = select(defocusR.lessThan(0.3), sharp, blurred);
 
-  // ── Color grade (blue phosphor for neutrals, vivid pass-through for saturated) ──
+  // ── Color grade + saturation boost ──
   const graded = tslVectorColorGrade(core);
-  const origHsv = tslRgb2Hsv(core);
-  const satPreserve = smoothstep(0.10, 0.3, origHsv.y);
-  const boosted = core.mul(1.6);
-  const color = mix(graded, boosted, satPreserve).toVar();
+  const gray = tslLuma(graded);
+  const color = mix(vec3(gray, gray, gray), graded, tslFloat(1.9)).toVar();
 
-  // ── Saturation boost ──
-  const lum = tslLuma(color);
-  color.assign(mix(vec3(lum, lum, lum), color, tslFloat(1.35)));
+  // ── Deflection brightness boost — beam brightens at screen edges ──
+  const deflectionBoost = dot(fromCenter, fromCenter).mul(0.15).add(1.0);
+  color.assign(color.mul(deflectionBoost));
 
-  // ── Bloom (very tight — GlowRenderer already provides line-level glow) ──
+  // ── Bloom (color-graded, slightly less than WebGL baseline) ──
   const bloomUV = curved;
   const bloomSample = texture(bloomTex, bloomUV).rgb;
-  color.assign(color.add(bloomSample.mul(0.04)));
+  const bloomGraded = tslVectorColorGrade(bloomSample);
+  // Dynamic bloom: estimate screen load from bloom texture
+  const loadSampleV = texture(bloomTex, vec2(0.25, 0.75)).rgb
+    .add(texture(bloomTex, vec2(0.75, 0.75)).rgb)
+    .add(texture(bloomTex, vec2(0.25, 0.25)).rgb)
+    .add(texture(bloomTex, vec2(0.75, 0.25)).rgb);
+  const screenLoadV = tslLuma(loadSampleV.mul(0.25));
+  const dynBloomV = screenLoadV.mul(0.3).add(1.0).mul(0.08);
+  color.assign(color.add(bloomGraded.mul(dynBloomV)));
 
   // ── Chromatic aberration ──
   const caStrength = dot(fromCenter, fromCenter).mul(0.008);
   const caOffset = fromCenter.mul(caStrength);
-  const rShiftLuma = tslLuma(texture(sourceTex, clampUV(curved.add(caOffset))).rgb);
-  const bShiftLuma = tslLuma(texture(sourceTex, clampUV(curved.sub(caOffset))).rgb);
+  const rShiftLuma = tslLuma(tslVectorColorGrade(texture(sourceTex,clampUV(curved.add(caOffset))).rgb));
+  const bShiftLuma = tslLuma(tslVectorColorGrade(texture(sourceTex,clampUV(curved.sub(caOffset))).rgb));
   const colorLuma = tslLuma(color);
   const newR = mix(color.r, color.r.mul(rShiftLuma.sub(colorLuma).mul(0.3).add(1.0)), tslFloat(0.5));
   const newB = mix(color.b, color.b.mul(bShiftLuma.sub(colorLuma).mul(0.3).add(1.0)), tslFloat(0.5));
@@ -278,16 +291,16 @@ function buildVectorCompositeNode(
   const grainAmt = smoothstep(0.08, 0.6, tslLuma(color));
   color.assign(color.add(grain.mul(grainAmt)));
 
-  // ── Glass surface reflection ──
+  // ── Glass surface reflection (static, not drifting) ──
   const glassCoord = curved.mul(2).sub(1);
   const glassHL = max(tslFloat(1).sub(dot(glassCoord, glassCoord).mul(0.5)), tslFloat(0));
-  color.assign(color.add(vec3(0.001, 0.0015, 0.003).mul(glassHL)));
+  color.assign(color.add(vec3(0.002, 0.003, 0.006).mul(glassHL)));
 
-  // ── Blue phosphor tint (only where content exists — gate at luma threshold) ──
+  // ── Blue phosphor tint (subtle — only where content exists) ──
   const blueVar = sin(timeU.mul(0.4).add(curved.y.mul(4)).add(curved.x.mul(2.5))).mul(0.3).add(0.7);
   const blueNoise = tslHash2(floor(fragCoord.mul(0.5))).mul(0.15);
-  const blueTint = vec3(0.01, 0.015, 0.04).mul(blueVar.add(blueNoise));
-  const blueGate = smoothstep(0.03, 0.5, tslLuma(color));
+  const blueTint = vec3(0.006, 0.009, 0.022).mul(blueVar.add(blueNoise));
+  const blueGate = smoothstep(0.08, 0.6, tslLuma(color));
   color.assign(color.add(blueTint.mul(blueGate)));
 
   // ── Analog noise ──
@@ -298,60 +311,54 @@ function buildVectorCompositeNode(
   const flicker = sin(timeU.mul(8.3)).mul(0.008).add(sin(timeU.mul(17.1)).mul(0.004));
   color.assign(color.mul(flicker.add(1)));
 
-  // ── Phosphor dot matrix (visible on bright areas only) ──
-  const dotCoord = fragCoord.mul(0.5);  // ~2px period
-  const dotX = smoothstep(0.3, 0.5, fract(dotCoord.x));
-  const dotY = smoothstep(0.3, 0.5, fract(dotCoord.y));
-  const dotPattern = dotX.mul(dotY).mul(0.06).add(0.97);  // 0.97-1.03 range
-  const dotGate = smoothstep(0.15, 0.5, tslLuma(color));
-  color.assign(color.mul(mix(tslFloat(1), dotPattern, dotGate)));
-
-  // ── Drifting specular reflection off glass surface ──
-  const reflectCenter = vec2(sin(timeU.mul(0.13)).mul(0.25), cos(timeU.mul(0.09)).mul(0.15)).add(vec2(0.3, 0.25));
-  const reflectDist = length(curved.sub(reflectCenter));
-  const reflectGlare = exp(reflectDist.mul(-8.0)).mul(0.012);
-  color.assign(color.add(vec3(reflectGlare.mul(1.1), reflectGlare, reflectGlare.mul(0.9))));
-
   // ── Phosphor persistence (per-channel, max blend) ──
   const jitter = vec2(
     tslHash(fragCoord, timeU).sub(0.5),
     tslHash(vec2(fragCoord.y, fragCoord.x), timeU.add(17)).sub(0.5),
   ).mul(0.0004);
   const prevUV = uvCoord.add(jitter);
-  const prev = prevFrameTexNode.sample(prevUV).rgb;
+  const prevFull = prevFrameTexNode.sample(prevUV);
+  const prev = prevFull.rgb;
   color.assign(max(color, prev.mul(phosphorDecayU)));
+
+  // ── Beam dwell glow — bright spots emit extra blue phosphor light ──
+  const dwellAmt = pow(tslLuma(color), tslFloat(2.0)).mul(0.08);
+  color.assign(color.add(vec3(0.3, 0.6, 1.0).mul(dwellAmt)));
+
+  // ── Phosphor burn-in via alpha channel ──
+  const burnInPrev = prevFull.a;
+  const newBurnIn = max(burnInPrev.mul(0.998), tslLuma(color).mul(0.015));
+  color.assign(color.add(vec3(0.2, 0.4, 1.0).mul(newBurnIn).mul(0.05)));
 
   // ── Apply corner mask & output ──
   color.assign(color.mul(cornerMask));
-  return vec4(clamp(color, 0, 1), 1.0);
+  return vec4(clamp(color, 0, 1), newBurnIn);
   })();
 }
 
 // --- CRT raster composite (multi-pass with CRT-Lottes scanlines + phosphor persistence) ---
-function buildCrtCompositeNode(sourceTex, bloomTex, resolutionU, timeU) {
+function buildCrtCompositeNode(sourceTex, bloomTex, prevFrameTexNode, resolutionU, timeU, phosphorDecayU) {
   // CRT-Lottes constants (tunable)
-  const HARD_SCAN = -12.0;  // scanline beam sharpness (more negative = tighter gap)
-  const HARD_PIX  = -4.0;   // pixel sharpness (more negative = sharper edges)
-  const MASK_DARK = 0.65;   // aperture grille dark level
-  const MASK_LIGHT = 1.4;   // aperture grille bright level
-  const BLOOM_AMOUNT = 0.12;
+  const HARD_SCAN = -14.0;  // scanline beam sharpness (more negative = tighter gap)
+  const HARD_PIX  = -5.0;   // pixel sharpness (more negative = sharper edges)
+  const BLOOM_AMOUNT = 0.07;
 
   return Fn(() => {
   const uvCoord = uv();
   const vRes = vec2(V_RES_X, V_RES_Y);
   const vTexel = vec2(V_TEXEL_X, V_TEXEL_Y);
 
-  // ── Rounded corners ──
-  const cornerDist = tslRoundedRectSDF(uvCoord, vec2(0.96), tslFloat(CORNER_RADIUS));
-  const cornerMask = tslFloat(1).sub(smoothstep(-0.003, 0.005, cornerDist));
+  // ── CRT tube boundary — rounded rectangle SDF (matches WebGL) ──
+  const cornerDist = tslRoundedRectSDF(uvCoord, vec2(0.96, 0.96), tslFloat(CORNER_RADIUS));
+  const cornerMask = tslFloat(1).sub(smoothstep(tslFloat(-0.003), tslFloat(0.005), cornerDist));
 
-  // ── Barrel distortion ──
+  // ── Barrel distortion (content) ──
   const curved = tslCurveUV(uvCoord).toVar();
 
   // ── Per-scanline H-jitter (minimal — arcade monitors were maintained) ──
   const jitterLine = floor(curved.y.mul(V_RES_Y));
   const hJitter = fract(sin(jitterLine.mul(54.37).add(floor(timeU.mul(12)).mul(7.13))).mul(43758.5)).sub(0.5);
-  curved.assign(vec2(curved.x.add(hJitter.mul(0.0008)), curved.y));
+  curved.assign(vec2(curved.x.add(hJitter.mul(0.001)), curved.y));
   curved.assign(clamp(curved, 0.0, 1.0));
 
   // Display pitch (physical pixels per virtual pixel)
@@ -365,18 +372,18 @@ function buildCrtCompositeNode(sourceTex, bloomTex, resolutionU, timeU) {
   // Fetch virtual pixel at integer offset (dx, dy) → linear sRGB
   const fetchPx = (dx, dy) => {
     const fetchUV = basePx.add(vec2(dx, dy)).add(0.5).div(vRes);
-    return tslToLinearSRGB(texture(sourceTex, clamp(fetchUV, 0.0, 1.0)).rgb);
+    return tslToLinearSRGB(texture(sourceTex,clamp(fetchUV, 0.0, 1.0)).rgb);
   };
 
   // Center pixel: 5-tap max-brightness (catches thin vector lines between pixels)
   const centerUV = basePx.add(0.5).div(vRes);
   const vOff = vec2(0, vTexel.y.mul(0.4));
   const hOff = vec2(vTexel.x.mul(0.4), 0);
-  const ms0 = tslToLinearSRGB(texture(sourceTex, centerUV).rgb);
-  const ms1 = tslToLinearSRGB(texture(sourceTex, clamp(centerUV.sub(vOff), 0.0, 1.0)).rgb);
-  const ms2 = tslToLinearSRGB(texture(sourceTex, clamp(centerUV.add(vOff), 0.0, 1.0)).rgb);
-  const ms3 = tslToLinearSRGB(texture(sourceTex, clamp(centerUV.sub(hOff), 0.0, 1.0)).rgb);
-  const ms4 = tslToLinearSRGB(texture(sourceTex, clamp(centerUV.add(hOff), 0.0, 1.0)).rgb);
+  const ms0 = tslToLinearSRGB(texture(sourceTex,centerUV).rgb);
+  const ms1 = tslToLinearSRGB(texture(sourceTex,clamp(centerUV.sub(vOff), 0.0, 1.0)).rgb);
+  const ms2 = tslToLinearSRGB(texture(sourceTex,clamp(centerUV.add(vOff), 0.0, 1.0)).rgb);
+  const ms3 = tslToLinearSRGB(texture(sourceTex,clamp(centerUV.sub(hOff), 0.0, 1.0)).rgb);
+  const ms4 = tslToLinearSRGB(texture(sourceTex,clamp(centerUV.add(hOff), 0.0, 1.0)).rgb);
   const centerMax = max(max(max(ms0, ms1), max(ms2, ms3)), ms4);
 
   // Pixel weights (horizontal Gaussian)
@@ -421,29 +428,55 @@ function buildCrtCompositeNode(sourceTex, bloomTex, resolutionU, timeU) {
   // Pitch-adaptive: fade scanlines at low pitch to prevent moire
   color.assign(mix(horzC, color, smoothstep(1.0, 2.0, pitch)));
 
-  // ── Bloom / halation from pre-blurred bloom texture ──
-  const bloomSample = tslToLinearSRGB(texture(bloomTex, curved).rgb);
-  color.assign(color.add(bloomSample.mul(BLOOM_AMOUNT)));
+  // ── Beam overshoot / ringing at sharp luminance transitions ──
+  const centerLuma = tslLuma(centerMax);
+  const leftLuma = tslLuma(c_n1);
+  const rightLuma = tslLuma(c_p1);
+  const edgeDet = abs(centerLuma.sub(leftLuma)).add(abs(centerLuma.sub(rightLuma)));
+  const overshoot = centerMax.sub(c_n1.add(c_p1).mul(0.5)).mul(edgeDet).mul(0.15);
+  color.assign(color.add(overshoot));
 
-  // ── CRT-Lottes aperture grille (Trinitron RGB stripes, pitch-adaptive period) ──
+  // ── Bloom / halation from pre-blurred bloom texture (dynamic) ──
+  const loadSampleC = texture(bloomTex, vec2(0.25, 0.75)).rgb
+    .add(texture(bloomTex, vec2(0.75, 0.75)).rgb)
+    .add(texture(bloomTex, vec2(0.25, 0.25)).rgb)
+    .add(texture(bloomTex, vec2(0.75, 0.25)).rgb);
+  const screenLoadC = tslLuma(loadSampleC.mul(0.25));
+  const dynBloomC = screenLoadC.mul(0.3).add(1.0).mul(BLOOM_AMOUNT);
+  const bloomSample = tslToLinearSRGB(texture(bloomTex, curved).rgb);
+  color.assign(color.add(bloomSample.mul(dynBloomC)));
+
+  // ── Aperture grille (Trinitron-style vertical RGB stripes, fixed 3px) ──
   const fragCoord = uvCoord.mul(resolutionU);
-  // Adapt grille period to display pitch: ~3 physical pixels per stripe, multiples of 3
-  const grillePeriod = max(tslFloat(3), floor(pitch.mul(0.8).div(3).add(0.5)).mul(3));
-  const apX = fragCoord.x.add(fragCoord.y.mul(3.0));
-  const apPhase = fract(apX.div(grillePeriod));
-  const mR = select(apPhase.lessThan(0.333), tslFloat(MASK_LIGHT), tslFloat(MASK_DARK));
-  const mG = select(
-    apPhase.greaterThanEqual(0.333).and(apPhase.lessThan(0.666)),
-    tslFloat(MASK_LIGHT), tslFloat(MASK_DARK),
-  );
-  const mB = select(apPhase.greaterThanEqual(0.666), tslFloat(MASK_LIGHT), tslFloat(MASK_DARK));
-  const grilleMask = vec3(mR, mG, mB);
+  const mx = mod(fragCoord.x, tslFloat(3));
+  const MASK_STR = 0.12;
+  const maskR = select(mx.lessThan(1), tslFloat(1 + MASK_STR), tslFloat(1 - MASK_STR * 0.5));
+  const maskG = select(mx.greaterThanEqual(1).and(mx.lessThan(2)), tslFloat(1 + MASK_STR), tslFloat(1 - MASK_STR * 0.5));
+  const maskB = select(mx.greaterThanEqual(2), tslFloat(1 + MASK_STR), tslFloat(1 - MASK_STR * 0.5));
+  const grilleSep = smoothstep(0.0, 0.5, mx).mul(smoothstep(3.0, 2.5, mx));
+  const grilleMask = vec3(maskR, maskG, maskB).mul(mix(tslFloat(0.88), tslFloat(1), grilleSep));
   color.assign(color.mul(mix(vec3(1), grilleMask, smoothstep(1.0, 2.0, pitch))));
 
-  // (No RGB convergence error — arcade monitors were properly aligned)
+  // ── Moire shimmer — subtle interference between aperture grille and scanlines ──
+  const moirePhase = sin(curved.y.mul(V_RES_Y).mul(Math.PI).add(mx.mul(Math.PI * 0.667)).add(timeU.mul(2.0)));
+  color.assign(color.mul(moirePhase.mul(0.008).add(1.0)));
+
+  // ── RGB convergence error at screen edges ──
+  const convergeDist = length(curved.sub(0.5));
+  const convergeAmt = convergeDist.mul(convergeDist).mul(0.008);
+  const convergeDir = normalize(curved.sub(0.5).add(0.001));
+  const rUV = clamp(curved.add(convergeDir.mul(convergeAmt)), 0.0, 1.0);
+  const bUV = clamp(curved.sub(convergeDir.mul(convergeAmt)), 0.0, 1.0);
+  const convergR = mix(color.r, tslToLinearSRGB(texture(sourceTex,rUV).rgb).x, tslFloat(0.6));
+  const convergB = mix(color.b, tslToLinearSRGB(texture(sourceTex,bUV).rgb).z, tslFloat(0.6));
+  color.assign(vec3(convergR, color.g, convergB));
 
   // ── Warm color temperature ──
-  color.assign(color.mul(vec3(1.08, 1.02, 0.90)));
+  color.assign(color.mul(vec3(0.96, 0.93, 0.88)));
+
+  // ── Saturation boost ──
+  const satGray = dot(color, vec3(0.299, 0.587, 0.114));
+  color.assign(mix(vec3(satGray, satGray, satGray), color, tslFloat(1.08)));
 
   // ── Interlace flicker ──
   const virtualY = curved.y.mul(V_RES_Y);
@@ -466,24 +499,21 @@ function buildCrtCompositeNode(sourceTex, bloomTex, resolutionU, timeU) {
   const cb = max(max(color.r, color.g), color.b);
   color.assign(color.mul(psFlicker.mul(0.08).mul(cb.mul(0.5).add(1)).add(1)));
 
+  // ── CRT phosphor persistence (P22 — short 2-3 frame trails) ──
+  const prevCrt = tslToLinearSRGB(prevFrameTexNode.sample(uvCoord).rgb);
+  color.assign(max(color, prevCrt.mul(phosphorDecayU)));
+
   // ── Proper sRGB gamma encoding ──
   color.assign(tslToGammaSRGB(clamp(color, 0, 1)));
 
-  // (No phosphor persistence — real P22 phosphors decay within one frame)
-
-  // ── Coarse analog noise (reduced — arcade cabinets had decent shielding) ──
-  color.assign(color.add(tslNoise3(floor(fragCoord.div(3)), timeU).mul(0.003)));
-
-  // ── Drifting specular reflection off glass surface ──
-  const crtReflectCenter = vec2(sin(timeU.mul(0.13)).mul(0.25), cos(timeU.mul(0.09)).mul(0.15)).add(vec2(0.3, 0.25));
-  const crtReflectDist = length(curved.sub(crtReflectCenter));
-  const crtReflectGlare = exp(crtReflectDist.mul(-8.0)).mul(0.012);
-  color.assign(color.add(vec3(crtReflectGlare.mul(1.1), crtReflectGlare, crtReflectGlare.mul(0.9))));
+  // ── Analog RGB noise at virtual pixel resolution, quantized to 30fps ──
+  const noiseTime = floor(timeU.mul(30)).div(30);
+  color.assign(color.add(tslNoise3(floor(vPos), noiseTime).mul(0.003)));
 
   // ── Corner mask ──
   color.assign(color.mul(cornerMask));
 
-  return vec4(clamp(color, 0, 1), 1.0);
+  return vec4(clamp(color, 0, 1), 0.0);
   })();
 }
 
@@ -535,10 +565,6 @@ export async function createWebGPUOverlay(gameCanvas) {
 
   console.log('[WebGPUOverlay] WebGPU renderer initialized');
 
-  // ── GPU line renderer ──
-  const lineRenderer = new LineRenderer();
-  const sharedPacket = new RenderPacket();
-
   // ── Source texture from Phaser canvas ──
   const sourceTexture = new CanvasTexture(gameCanvas);
   sourceTexture.flipY = false; // WebGPU: canvas is already Y=0 at top
@@ -564,8 +590,6 @@ export async function createWebGPUOverlay(gameCanvas) {
   const bloomTargetB = makeTarget(1, 1);
   const persistTargetA = makeTarget(1, 1);
   const persistTargetB = makeTarget(1, 1);
-  const compositeTarget = makeTarget(1, 1); // lines + HUD composite
-
   let fullW = 0, fullH = 0, bloomW = 0, bloomH = 0;
 
   function ensureTargets(w, h) {
@@ -576,7 +600,6 @@ export async function createWebGPUOverlay(gameCanvas) {
     bloomTargetB.setSize(bw, bh);
     persistTargetA.setSize(w, h);
     persistTargetB.setSize(w, h);
-    compositeTarget.setSize(w, h);
     fullW = w; fullH = h;
     bloomW = bw; bloomH = bh;
   }
@@ -598,8 +621,7 @@ export async function createWebGPUOverlay(gameCanvas) {
   const quad = new QuadMesh();
 
   // Post-processing reads directly from sourceTexture (Phaser canvas).
-  // When GPU lines are enabled, we'll composite into compositeTarget and
-  // swap the source reference.
+  // GPU lines are rendered as an additive overlay after post-processing.
 
   // Bloom downsample
   const bloomDownsampleMat = new NodeMaterial();
@@ -626,20 +648,20 @@ export async function createWebGPUOverlay(gameCanvas) {
   const passthroughMat = new NodeMaterial();
   passthroughMat.fragmentNode = buildPassthroughNode(passthroughTexNode);
 
-  // CRT composite (multi-pass with CRT-Lottes scanlines)
+  // CRT composite (multi-pass with CRT-Lottes scanlines + phosphor persistence)
   const crtCompositeMat = new NodeMaterial();
   crtCompositeMat.fragmentNode = buildCrtCompositeNode(
-    sourceTexture, bloomTargetA.texture, uResolution, uTime,
+    sourceTexture, bloomTargetA.texture, prevFrameTexNode,
+    uResolution, uTime, uPhosphorDecay,
   );
 
   // ── State ──
   let savedShader = 'vector';
   try { savedShader = localStorage.getItem('vectronix-display-mode') || 'vector'; } catch (e) { /* noop */ }
   let activeShaderName = (savedShader === 'crt') ? 'crt' : 'vector';
-  let currentPhosphorDecay = 0.20;
+  let currentPhosphorDecay = 0.35;
   let pingPong = 0;
   let lastRenderTime = 0;
-  let pendingPacket = null; // set by submitPacket(), consumed each frame
 
   // ── Render loop ──
   function render() {
@@ -668,19 +690,11 @@ export async function createWebGPUOverlay(gameCanvas) {
     sourceTexture.minFilter = activeShaderName === 'crt' ? NearestFilter : LinearFilter;
     sourceTexture.magFilter = activeShaderName === 'crt' ? NearestFilter : LinearFilter;
 
-    // TODO: When GPU lines are re-enabled, composite Phaser canvas + lines
-    // into compositeTarget, then point post-processing at compositeTarget.texture.
-    // For now, post-processing reads directly from sourceTexture (Phaser canvas).
-    if (pendingPacket) {
-      pendingPacket = null; // consume but don't render yet (gpuLinesReady = false)
-    }
-
     // ── Post-processing (5-pass pipeline, both modes) ──
 
-    // Framerate-independent phosphor decay (vector mode only)
-    if (activeShaderName === 'vector') {
-      uPhosphorDecay.value = Math.pow(currentPhosphorDecay, dt * 60.0);
-    }
+    // Framerate-independent phosphor decay (both modes, different base values)
+    const decayBase = activeShaderName === 'vector' ? currentPhosphorDecay : 0.15;
+    uPhosphorDecay.value = Math.pow(decayBase, dt * 60.0);
 
     // Passes 1-3: Bloom downsample → H blur → V blur (shared)
     quad.material = bloomDownsampleMat;
@@ -697,8 +711,7 @@ export async function createWebGPUOverlay(gameCanvas) {
     quad.render(renderer);
 
     // Pass 4: Composite (mode-specific material)
-    // Vector: writes to persist target (ping-pong for phosphor persistence)
-    // CRT: writes to persist target as intermediate (no accumulation)
+    // Both modes write to persist target (ping-pong for phosphor persistence)
     const writeTarget = pingPong === 0 ? persistTargetA : persistTargetB;
     const readTarget = pingPong === 0 ? persistTargetB : persistTargetA;
     prevFrameTexNode.value = readTarget.texture;
@@ -715,8 +728,8 @@ export async function createWebGPUOverlay(gameCanvas) {
     renderer.setSize(overlay.width, overlay.height, false);
     quad.render(renderer);
 
-    // Only advance ping-pong for vector (CRT doesn't read previous frame)
-    if (activeShaderName === 'vector') pingPong = 1 - pingPong;
+    // Advance ping-pong for both modes (both now use phosphor persistence)
+    pingPong = 1 - pingPong;
 
     requestAnimationFrame(render);
   }
@@ -729,6 +742,12 @@ export async function createWebGPUOverlay(gameCanvas) {
     setShader(name) {
       if (name === 'crt' || name === 'vector') {
         activeShaderName = name;
+        // Clear persist targets to prevent ghost artifacts from other mode
+        renderer.setRenderTarget(persistTargetA);
+        renderer.clear();
+        renderer.setRenderTarget(persistTargetB);
+        renderer.clear();
+        renderer.setRenderTarget(null);
         try { localStorage.setItem('vectronix-display-mode', name); } catch (e) { /* noop */ }
       }
     },
@@ -738,14 +757,8 @@ export async function createWebGPUOverlay(gameCanvas) {
     getShaderName() {
       return activeShaderName;
     },
-    /** Submit a filled RenderPacket for GPU line rendering this frame. */
-    submitPacket(packet) {
-      pendingPacket = packet;
-    },
-    /** Pre-allocated RenderPacket — scenes fill this and call submitPacket(). */
-    packet: sharedPacket,
-    /** True when the GPU line renderer is available.
-     *  Disabled until LineRenderer shader compilation is verified. */
+    /** GPU line rendering disabled — Three.js WebGPU doesn't support
+     *  renderer.render() with custom instanced geometry reliably. */
     gpuLinesReady: false,
   };
 }

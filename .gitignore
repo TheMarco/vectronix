@@ -2,6 +2,7 @@ node_modules/
 dist/
 .vercel
 .claude/
+.agents/
 
 # iOS build artifacts
 ios/App/App/public

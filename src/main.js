@@ -5,6 +5,7 @@ import { GameScene } from './game/scenes/GameScene.js';
 import { ShipViewerScene } from './game/scenes/ShipViewerScene.js';
 import { SoundEngine } from './game/audio/SoundEngine.js';
 import { createShaderOverlay } from './game/shaderOverlay.js';
+import { init as initPlayFun } from './game/playfun.js';
 
 const isTauri = !!window.__TAURI_INTERNALS__;
 const isIframed = window !== window.top;
@@ -60,6 +61,9 @@ document.fonts.ready.then(() => {
   document.addEventListener('click', initAudio);
   document.addEventListener('keydown', initAudio);
 
+  // Play.fun SDK (only activates when iframed on play.fun)
+  initPlayFun();
+
   // Apply shader overlay after canvas is ready
   setTimeout(async () => {
     const shaderOverlay = await createShaderOverlay(game.canvas);
@@ -68,10 +72,10 @@ document.fonts.ready.then(() => {
     // Desktop: wire up shader toggle buttons and set initial active state
     if (!isTouchDevice) {
       const currentName = shaderOverlay.getShaderName();
-      document.querySelectorAll('#shader-toggle button').forEach(btn => {
+      document.querySelectorAll('#shader-toggle button[data-shader]').forEach(btn => {
         if (btn.dataset.shader === currentName) btn.classList.add('active');
         btn.addEventListener('click', () => {
-          document.querySelector('#shader-toggle .active')?.classList.remove('active');
+          document.querySelector('#shader-toggle button[data-shader].active')?.classList.remove('active');
           btn.classList.add('active');
           shaderOverlay.setShader(btn.dataset.shader);
         });

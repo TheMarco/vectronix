@@ -198,24 +198,6 @@ export class TitleScene extends Phaser.Scene {
       this._starLine(star.x, star.y, star.x, star.y + streakLen, star.color, star.brightness, star.size * 0.5);
     }
 
-    // Geometric background decoration — hexagonal grid pulse (skip in CRT: aliases badly)
-    const isCRT = overlay && overlay.getShaderName && overlay.getShaderName() === 'crt';
-    if (!isCRT) {
-      const pulseA = 0.08 + Math.sin(this._time * 1.5) * 0.04;
-      const hexR = 280;
-      for (let i = 0; i < 6; i++) {
-        const a1 = (i / 6) * Math.PI * 2 + this._time * 0.15;
-        const a2 = ((i + 1) / 6) * Math.PI * 2 + this._time * 0.15;
-        const x1 = CX + Math.cos(a1) * hexR;
-        const y1 = CY - 50 + Math.sin(a1) * hexR * 0.6;
-        const x2 = CX + Math.cos(a2) * hexR;
-        const y2 = CY - 50 + Math.sin(a2) * hexR * 0.6;
-        this._starLine(x1, y1, x2, y2, 0x222255, pulseA, 0.75);
-        // Radial spokes
-        this._starLine(CX, CY - 50, x1, y1, 0x222255, pulseA * 0.5, 0.5);
-      }
-    }
-
     // ─── LOGO ───
     const logoReveal = Math.min(1, Math.max(0, (this._time - 0.3) * 1.5));
     const logoPulse = 0.85 + Math.sin(this._time * 2.0) * 0.15;

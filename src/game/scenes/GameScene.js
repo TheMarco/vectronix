@@ -19,6 +19,7 @@ import {
 } from '../rendering/GlowRenderer.js';
 import { vectorText } from '../rendering/VectorFont.js';
 import { DemoAI } from '../ai/DemoAI.js';
+import { addPoints as playFunAddPoints, endGame as playFunEndGame } from '../playfun.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -49,6 +50,11 @@ export class GameScene extends Phaser.Scene {
     this.explosionRenderer = new ExplosionRenderer();
     this.explosionRenderer.crtMode = this.formation.crtMode;
     this.score = 0;
+    this._addScore = (pts) => {
+      const rounded = Math.round(pts);
+      this.score += rounded;
+      playFunAddPoints(rounded);
+    };
     this._prevScore = 0;
     this._nextExtraLifeIndex = 0;
     this.gameOver = false;
@@ -109,11 +115,11 @@ export class GameScene extends Phaser.Scene {
     this.collisionSystem.onEnemyKilled = (enemy) => {
       // Boss with captured ship: extra score + release ship
       if (enemy.isBoss && enemy.capturedShip) {
-        this.score += Math.round(CONFIG.SCORE_BOSS_WITH_CAPTURE * this.riskMultiplier);
+        this._addScore(CONFIG.SCORE_BOSS_WITH_CAPTURE * this.riskMultiplier);
         this.waveSystem.releaseCapturedShip(enemy);
       } else {
         const points = enemy.isDiving ? enemy.scoreDiving : enemy.scoreValue;
-        this.score += Math.round(points * this.riskMultiplier);
+        this._addScore(points * this.riskMultiplier);
       }
       this.explosionRenderer.spawn(enemy.x, enemy.y, enemy.color);
       this.soundEngine.playExplosion();
@@ -140,7 +146,7 @@ export class GameScene extends Phaser.Scene {
           );
           if (allDead && noneReachedFormation) {
             const bonus = 1000;
-            this.score += Math.round(bonus * this.riskMultiplier);
+            this._addScore(bonus * this.riskMultiplier);
             this._floatingTexts.push({
               text: '1000',
               x: enemy.x,
@@ -253,7 +259,7 @@ export class GameScene extends Phaser.Scene {
     this.waveSystem.onChallengeResult = (hits, total, isPerfect) => {
       const bonus = hits * CONFIG.CHALLENGE_BONUS_PER_HIT +
         (isPerfect ? CONFIG.CHALLENGE_PERFECT_BONUS : 0);
-      this.score += Math.round(bonus * this.riskMultiplier);
+      this._addScore(bonus * this.riskMultiplier);
       this.hud.showChallengeResults(hits, total, bonus, isPerfect);
       this.soundEngine.playChallengeResult();
     };
@@ -563,7 +569,7 @@ export class GameScene extends Phaser.Scene {
             this.soundEngine.playDualFighter();
           } else {
             // Already dual — bonus points
-            this.score += Math.round(CONFIG.SCORE_RESCUE_BONUS * this.riskMultiplier);
+            this._addScore(CONFIG.SCORE_RESCUE_BONUS * this.riskMultiplier);
           }
         }
       }
@@ -630,7 +636,7 @@ export class GameScene extends Phaser.Scene {
             if (this._ufoSound) { this._ufoSound.stop(); this._ufoSound = null; }
             this.explosionRenderer.spawn(this._ufo.x, this._ufo.y, CONFIG.COLORS.UFO, 14);
             this.soundEngine.playUfoKill();
-            this.score += Math.round(CONFIG.UFO_SCORE * this.riskMultiplier);
+            this._addScore(CONFIG.UFO_SCORE * this.riskMultiplier);
             this._stats.shotsHit++;
             this._applyUfoBonus();
             this._ufo = null;
@@ -679,6 +685,7 @@ export class GameScene extends Phaser.Scene {
       // in the same frame as death isn't wasted
       if (!this.gameOver && this.player.isGameOver) {
         this.gameOver = true;
+        playFunEndGame();
         try {
           const prev = parseInt(localStorage.getItem('vectronix-highscore') || '0', 10);
           if (this.score > prev) {
