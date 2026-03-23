@@ -65,7 +65,8 @@ wave_defs={
 }
 
 function template_for_wave(n)
- local idx=((n-1)%#wave_defs)+1
+ local normal_n=n-flr(n/5)
+ local idx=((normal_n-1)%#wave_defs)+1
  return wave_defs[idx]
 end
 
@@ -91,6 +92,10 @@ function spawn_wave_enemy(kind,row,col,slot)
   spawn_t=slot*7+row*6,
   dive_kind=1+flr(rnd(4)),
   shot_t=20+flr(rnd(70)),
+  shots=0,
+  target_x=tx,
+  dive_slot=0,
+  dive_total=1,
   captured=false,
   beam_t=0,
   beam_x=0
@@ -121,20 +126,25 @@ function build_challenge_wave()
  challenge=true
  challenge_hits=0
  challenge_total=0
- local cycle_off=((wave/5)-1)%#challenge_cycle
- -- 5 groups of 4, staggered entry
- local patterns={1,2,3,4,1}
- -- rotate patterns based on wave
- local rot=flr(wave/5)%4
- for grp=0,4 do
-  local pat=1+((grp+rot)%4)
+ local stage=flr((wave/5)-1)
+ local challenge_kind=challenge_cycle[(stage%#challenge_cycle)+1]
+ local layouts={
+  {1,2,3,4,5,2},
+  {2,4,1,5,3,2},
+  {5,3,4,1,2,5},
+  {4,1,5,2,3,4},
+  {3,5,2,4,1,3}
+ }
+ local layout=layouts[(stage%#layouts)+1]
+ -- 6 groups of 4, staggered entry
+ for grp=0,5 do
+  local pat=layout[grp+1]
   local dir=(grp%2==0) and 1 or -1
-  local grp_delay=grp*80
+  local grp_delay=grp*68
   for j=0,3 do
    challenge_total+=1
-   local kind=challenge_cycle[((challenge_total+cycle_off-1)%#challenge_cycle)+1]
    add(enemies,{
-    kind=kind,
+    kind=challenge_kind,
     row=j,
     col=grp,
     x=-20,
@@ -151,6 +161,10 @@ function build_challenge_wave()
     spawn_t=0,
     dive_kind=pat,
     shot_t=999,
+    shots=0,
+    target_x=64,
+    dive_slot=j,
+    dive_total=4,
     captured=false,
     beam_t=0
    })

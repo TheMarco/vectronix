@@ -56,13 +56,21 @@ function draw_playfield()
  draw_capture_anim()
  draw_hud()
  if wave_banner_t>0 then
-  print("wave "..wave,52,62,10)
+  if challenge then
+   print("challenging",34,58,10)
+   print("stage",52,66,10)
+  else
+   print("wave "..wave,52,62,10)
+  end
  end
  if result_t>0 then
-  rectfill(18,52,110,76,1)
+  rectfill(14,52,114,84,1)
   print("challenge",46,56,10)
   print("hits "..challenge_hits.."/"..challenge_total,34,64,7)
   print("bonus "..result_bonus,38,72,11)
+  if challenge_hits==challenge_total then
+   print("perfect!",44,80,14)
+  end
  end
 end
 
@@ -72,8 +80,8 @@ function draw_player()
  if flash then return end
  local frame=player_frames[1+flr(player.anim/10)%2]
  if player.dual then
-  spr(frame,player.x-7,player.y-4)
-  spr(frame,player.x+1,player.y-4)
+  spr(frame,player.x-8,player.y-4)
+  spr(frame,player.x,player.y-4)
  else
   spr(frame,player.x-4,player.y-4)
  end
@@ -97,7 +105,7 @@ function draw_enemy(e)
  local x=e.x-def.w*4
  local y=e.y-def.h*4
  spr(frame,x,y,def.w,def.h,e.dir<0)
- if e.state=="beaming" then
+ if e.state=="beaming" or e.state=="capturing" then
   for sy=e.y+4,118,4 do
    line(e.x-2,sy,e.x+2,sy,12)
   end
@@ -134,7 +142,11 @@ function draw_hud()
  if slow_t>0 then spr(power_icons.slow,x,120) x+=8 end
  if magnet_t>0 then spr(power_icons.magnet,x,120) x+=8 end
  if freeze_t>0 then spr(power_icons.freeze,x,120) end
- if captured_boss then
+ if notice_t>0 then
+  print(notice_text,64-#notice_text*2,111,11)
+ elseif player.captured then
+  print("ship captured",34,111,8)
+ elseif captured_boss and captured_boss.captured then
   print("captured ship in play",18,111,14)
  end
 end

@@ -23,14 +23,14 @@ enemy_codes={
 }
 
 enemy_defs={
- grunt={spr={2,3},w=1,h=1,hp=1,score=50,dive_score=100,shot="aim",speed=1.0},
+ grunt={spr={2,3},w=1,h=1,hp=1,score=50,dive_score=100,shot="straight",speed=1.0},
  attacker={spr={4,5},w=1,h=1,hp=1,score=80,dive_score=160,shot="aim",speed=1.15},
- commander={spr={6,7,8},w=1,h=1,hp=2,score=250,dive_score=600,shot="aim",speed=0.95},
- spinner={spr={9,10,11,12},w=1,h=1,hp=1,score=100,dive_score=200,shot="spread",speed=1.1},
+ commander={spr={6,7,8},w=1,h=1,hp=2,score=250,dive_score=600,shot="spread",speed=0.95},
+ spinner={spr={9,10,11,12},w=1,h=1,hp=1,score=100,dive_score=200,shot="straight",speed=1.1},
  bomber={spr={13,14,15},w=1,h=1,hp=2,score=200,dive_score=500,shot="bomb",speed=0.9},
- guardian={spr={16,17,18,19},w=1,h=1,hp=3,score=400,dive_score=800,shot="spread",speed=0.8},
- phantom={spr={20,21,22,23},w=1,h=1,hp=1,score=160,dive_score=350,shot="aim",speed=1.05},
- swarm={spr={24,25},w=1,h=1,hp=1,score=30,dive_score=60,shot="none",speed=1.35},
+ guardian={spr={16,17,18,19},w=1,h=1,hp=3,score=400,dive_score=800,shot="none",speed=0.8},
+ phantom={spr={20,21,22,23},w=1,h=1,hp=1,score=160,dive_score=350,shot="straight",speed=1.05},
+ swarm={spr={24,25},w=1,h=1,hp=1,score=30,dive_score=60,shot="straight",speed=1.35},
  boss={spr={38,39,40,41},w=1,h=1,hp=2,score=400,dive_score=800,shot="boss",speed=0.85}
 }
 
@@ -47,8 +47,9 @@ fx_sprs={
  freeze=37
 }
 
-power_order={"rapid","shield","slow","magnet","freeze"}
+power_order={"extra","rapid","shield","slow","magnet","freeze"}
 power_icons={
+ extra=player_frames[1],
  rapid=fx_sprs.rapid,
  shield=fx_sprs.shield,
  slow=fx_sprs.slow,
