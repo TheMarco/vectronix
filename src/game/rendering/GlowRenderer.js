@@ -3,15 +3,28 @@
  * All functions operate on a Phaser Graphics object.
  */
 
-const GLOW_PASSES = [
+const GLOW_PASSES_FULL = [
   { width: 6, alpha: 0.04 },   // tight outer glow
   { width: 3, alpha: 0.15 },   // mid-glow
   { width: 1.5, alpha: 1.0 },  // sharp core
 ];
 
-export function drawGlowLine(gfx, x1, y1, x2, y2, color, mask = false, passes = GLOW_PASSES) {
+// Lite mode: single pass for handheld performance
+const GLOW_PASSES_LITE = [
+  { width: 1.5, alpha: 1.0 },
+];
+
+/** Set to true for reduced rendering (handheld devices) */
+export let liteMode = false;
+export function setLiteMode(v) { liteMode = v; }
+
+function getGlowPasses() { return liteMode ? GLOW_PASSES_LITE : GLOW_PASSES_FULL; }
+const GLOW_PASSES = GLOW_PASSES_FULL; // kept for callers passing explicit passes param
+
+export function drawGlowLine(gfx, x1, y1, x2, y2, color, mask = false, passes) {
+  const p = passes || getGlowPasses();
   // Draw thick black line first (normal blend) to block what's behind
-  if (mask) {
+  if (mask && !liteMode) {
     const prevBlend = gfx.defaultBlendMode;
     gfx.setBlendMode(0); // NORMAL
     gfx.lineStyle(20, 0x000000, 1.0);
@@ -22,7 +35,7 @@ export function drawGlowLine(gfx, x1, y1, x2, y2, color, mask = false, passes = 
     gfx.setBlendMode(prevBlend); // back to ADD
   }
 
-  for (const pass of passes) {
+  for (const pass of p) {
     gfx.lineStyle(pass.width, color, pass.alpha);
     gfx.beginPath();
     gfx.moveTo(x1, y1);
@@ -32,8 +45,9 @@ export function drawGlowLine(gfx, x1, y1, x2, y2, color, mask = false, passes = 
 }
 
 export function drawGlowPolygon(gfx, points, color, mask = false) {
+  const passes = getGlowPasses();
   // Draw thick black outline first (normal blend) to block what's behind
-  if (mask) {
+  if (mask && !liteMode) {
     const prevBlend = gfx.defaultBlendMode;
     gfx.setBlendMode(0); // NORMAL
     gfx.lineStyle(20, 0x000000, 1.0);
@@ -47,7 +61,7 @@ export function drawGlowPolygon(gfx, points, color, mask = false) {
     gfx.setBlendMode(prevBlend); // back to ADD
   }
 
-  for (const pass of GLOW_PASSES) {
+  for (const pass of passes) {
     gfx.lineStyle(pass.width, color, pass.alpha);
     gfx.beginPath();
     gfx.moveTo(points[0].x, points[0].y);
@@ -60,6 +74,11 @@ export function drawGlowPolygon(gfx, points, color, mask = false) {
 }
 
 export function drawGlowDot(gfx, cx, cy, color, radius = 1.5) {
+  if (liteMode) {
+    gfx.fillStyle(color, 0.8);
+    gfx.fillCircle(cx, cy, radius);
+    return;
+  }
   // Outer glow
   gfx.fillStyle(color, 0.04);
   gfx.fillCircle(cx, cy, radius * 3);
@@ -125,7 +144,7 @@ export function drawGlowArc(gfx, cx, cy, rx, ry, color, rotation = 0, startAngle
     });
   }
 
-  for (const pass of GLOW_PASSES) {
+  for (const pass of getGlowPasses()) {
     gfx.lineStyle(pass.width, color, pass.alpha);
     gfx.beginPath();
     gfx.moveTo(points[0].x, points[0].y);
@@ -156,6 +175,7 @@ export function drawGlowDashedLine(gfx, x1, y1, x2, y2, color, numDashes = 4) {
 
 // Mask helpers - draw opaque fills to block what's behind
 export function fillMaskRect(gfx, x1, y1, x2, y2, width) {
+  if (liteMode) return;
   // Draw a thick line as a filled rectangle
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -176,6 +196,7 @@ export function fillMaskRect(gfx, x1, y1, x2, y2, width) {
 }
 
 export function fillMaskCircle(gfx, cx, cy, radius) {
+  if (liteMode) return; // skip masks in lite mode — no glow to occlude
   const segments = 32;
   gfx.fillStyle(0x000000, 1.0);
   gfx.beginPath();
@@ -197,6 +218,7 @@ export function fillMaskCircle(gfx, cx, cy, radius) {
 }
 
 export function fillMaskEllipse(gfx, cx, cy, rx, ry, rotation = 0) {
+  if (liteMode) return;
   const segments = 32;
   const cosR = Math.cos(rotation);
   const sinR = Math.sin(rotation);

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { resolve } from 'path';
 
 export default defineConfig({
   base: './',
@@ -6,5 +7,13 @@ export default defineConfig({
   server: {
     port: 8081,
     strictPort: true,
+  },
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        android: resolve(__dirname, 'android.html'),
+      },
+    },
   },
 });

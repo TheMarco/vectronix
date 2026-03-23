@@ -6,13 +6,20 @@ import { ShipViewerScene } from './game/scenes/ShipViewerScene.js';
 import { SoundEngine } from './game/audio/SoundEngine.js';
 import { createShaderOverlay } from './game/shaderOverlay.js';
 import { init as initPlayFun } from './game/playfun.js';
+import { initHandheld, isNativePlatform } from './handheld/index.js';
+import { setLiteMode } from './game/rendering/GlowRenderer.js';
 
 const isTauri = !!window.__TAURI_INTERNALS__;
 const isIframed = window !== window.top;
+const isHandheld = isNativePlatform();
+
+// Handheld: reduce rendering complexity (1-pass glow, skip masks)
+if (isHandheld) setLiteMode(true);
 
 // Wait for fonts (Hyperspace) to load before starting the game
 document.fonts.ready.then(() => {
-  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  // Handheld (Android APK) is NOT a touch device for UI purposes
+  const isTouchDevice = !isHandheld && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
   // On mobile, activate cabinet layout before creating the game
   if (isTouchDevice) {
@@ -23,15 +30,15 @@ document.fonts.ready.then(() => {
   }
 
   // Desktop web: show website elements (logo, download, instructions)
-  // Skip web-mode when iframed (e.g. play.fun embed)
-  if (!isTouchDevice && !isTauri && !isIframed) {
+  // Skip web-mode when iframed (e.g. play.fun embed) or on handheld
+  if (!isTouchDevice && !isTauri && !isIframed && !isHandheld) {
     document.body.classList.add('web-mode');
   }
 
-  // Create game — on mobile, parent it inside the cabinet screen area
+  // Build Phaser config
   const containerId = isTouchDevice ? 'cabinet-screen' : 'game-container';
 
-  const game = new Phaser.Game({
+  const phaserConfig = {
     type: Phaser.WEBGL,
     parent: containerId,
     width: CONFIG.WIDTH,
@@ -44,22 +51,41 @@ document.fonts.ready.then(() => {
       pixelArt: false,
       antialias: true,
     },
+  };
+
+  // Initialize handheld runtime (modifies config on native, no-op on desktop)
+  const handheld = initHandheld(phaserConfig, {
+    logicalWidth: CONFIG.WIDTH,
+    logicalHeight: CONFIG.HEIGHT,
+    scale: 1,
   });
 
-  // Initialize audio on first user gesture (required by iOS)
+  const game = new Phaser.Game(phaserConfig);
+
+  // Bridge gamepad/controller input into synthetic keyboard events
+  handheld.startInputBridge(game);
+
+  // Initialize audio
   const soundEngine = new SoundEngine();
   game.registry.set('soundEngine', soundEngine);
-  const initAudio = () => {
+
+  if (isHandheld) {
+    // Auto-init audio on handheld (no user gesture gate needed)
     soundEngine.init();
-    document.removeEventListener('touchstart', initAudio);
-    document.removeEventListener('touchend', initAudio);
-    document.removeEventListener('click', initAudio);
-    document.removeEventListener('keydown', initAudio);
-  };
-  document.addEventListener('touchstart', initAudio);
-  document.addEventListener('touchend', initAudio);
-  document.addEventListener('click', initAudio);
-  document.addEventListener('keydown', initAudio);
+  } else {
+    // Desktop/mobile: require first user gesture (iOS requirement)
+    const initAudio = () => {
+      soundEngine.init();
+      document.removeEventListener('touchstart', initAudio);
+      document.removeEventListener('touchend', initAudio);
+      document.removeEventListener('click', initAudio);
+      document.removeEventListener('keydown', initAudio);
+    };
+    document.addEventListener('touchstart', initAudio);
+    document.addEventListener('touchend', initAudio);
+    document.addEventListener('click', initAudio);
+    document.addEventListener('keydown', initAudio);
+  }
 
   // Play.fun SDK (only activates when iframed on play.fun)
   initPlayFun();
@@ -69,8 +95,27 @@ document.fonts.ready.then(() => {
     const shaderOverlay = await createShaderOverlay(game.canvas);
     game.registry.set('shaderOverlay', shaderOverlay);
 
+    // Handheld: map Select button (button 8) to toggle display mode
+    if (isHandheld) {
+      let prevSelect = false;
+      game.events.on('prestep', () => {
+        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+        for (let i = 0; i < gamepads.length; i++) {
+          const gp = gamepads[i];
+          if (!gp) continue;
+          const select = gp.buttons[8]?.pressed || false;
+          if (select && !prevSelect) {
+            const next = shaderOverlay.getShaderName() === 'vector' ? 'crt' : 'vector';
+            shaderOverlay.setShader(next);
+          }
+          prevSelect = select;
+          break;
+        }
+      });
+    }
+
     // Desktop: wire up shader toggle buttons and set initial active state
-    if (!isTouchDevice) {
+    if (!isTouchDevice && !isHandheld) {
       const currentName = shaderOverlay.getShaderName();
       document.querySelectorAll('#shader-toggle button[data-shader]').forEach(btn => {
         if (btn.dataset.shader === currentName) btn.classList.add('active');

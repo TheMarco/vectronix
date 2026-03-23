@@ -16,6 +16,7 @@ import {
   drawGlowDot,
   drawGlowDiamond,
   fillMaskCircle,
+  liteMode,
 } from '../rendering/GlowRenderer.js';
 import { vectorText } from '../rendering/VectorFont.js';
 import { DemoAI } from '../ai/DemoAI.js';
@@ -301,10 +302,11 @@ export class GameScene extends Phaser.Scene {
     // Parallax scrolling starfield (3 layers)
     this._stars = [];
     const starColors = [0x88bbee, 0x88bbee, 0xaaccff, 0xddeeff, 0xffccaa, 0xffaa88, 0xaaddff];
+    const sf = liteMode ? 0.4 : 1; // reduce star count on handheld
     const starLayers = [
-      { count: 40, speed: 22, brightnessMin: 0.25, brightnessMax: 0.45, sizeMin: 0.5, sizeMax: 0.8 },
-      { count: 30, speed: 48, brightnessMin: 0.40, brightnessMax: 0.65, sizeMin: 0.7, sizeMax: 1.1 },
-      { count: 15, speed: 85, brightnessMin: 0.55, brightnessMax: 0.85, sizeMin: 1.0, sizeMax: 1.5 },
+      { count: Math.round(40 * sf), speed: 22, brightnessMin: 0.25, brightnessMax: 0.45, sizeMin: 0.5, sizeMax: 0.8 },
+      { count: Math.round(30 * sf), speed: 48, brightnessMin: 0.40, brightnessMax: 0.65, sizeMin: 0.7, sizeMax: 1.1 },
+      { count: Math.round(15 * sf), speed: 85, brightnessMin: 0.55, brightnessMax: 0.85, sizeMin: 1.0, sizeMax: 1.5 },
     ];
     for (const layer of starLayers) {
       for (let i = 0; i < layer.count; i++) {

@@ -4,6 +4,7 @@
  * No particles, no sprites — pure vector lines.
  */
 import Phaser from 'phaser';
+import { liteMode } from './GlowRenderer.js';
 
 const PARTICLE_COUNT = 14;
 const PARTICLE_SPEED = 220;
@@ -24,7 +25,7 @@ export class ExplosionRenderer {
     this.crtMode = false;
   }
 
-  spawn(x, y, color, count = PARTICLE_COUNT) {
+  spawn(x, y, color, count = liteMode ? 8 : PARTICLE_COUNT) {
     const particles = [];
 
     const r = Math.min(255, ((color >> 16) & 0xff) * 1.3);

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Vectronix</string>
+    <string name="title_activity_main">Vectronix</string>
+    <string name="package_name">com.aidesign.vectronix</string>
+    <string name="custom_url_scheme">com.aidesign.vectronix</string>
+</resources>
