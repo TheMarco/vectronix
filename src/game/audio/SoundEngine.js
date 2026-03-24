@@ -81,42 +81,60 @@ export class SoundEngine {
   }
 
   // ─── ENEMY EXPLOSION ───
-  // 8-bit style: filtered noise burst + fast descending square wave
+  // Matches PICO-8 sfx(6): descending noise burst, 5 notes, speed 4
+  // pitches 24→20→16→12→8, waveform=noise, vol 7→6→5→3→2 with fade-out
   playExplosion() {
     if (!this._ensureCtx()) return;
     const t = this.ctx.currentTime;
 
-    // Low-pass filtered noise burst — removes harsh high frequencies
-    const bufLen = this.ctx.sampleRate * 0.15;
-    const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
+    // PICO-8 pitch-to-freq: 65.41 * 2^(pitch/12)
+    const noteLen = 4 / 120; // speed=4 → ~0.033s per note
+    const notes = [
+      { pitch: 24, vol: 7 },
+      { pitch: 20, vol: 6 },
+      { pitch: 16, vol: 5 },
+      { pitch: 12, vol: 3 },
+      { pitch: 8,  vol: 2 },
+    ];
+
+    // Pre-render the descending noise burst as a single buffer
+    const totalDur = notes.length * noteLen;
+    const sr = this.ctx.sampleRate;
+    const bufLen = Math.ceil(totalDur * sr);
+    const buf = this.ctx.createBuffer(1, bufLen, sr);
     const data = buf.getChannelData(0);
-    for (let i = 0; i < bufLen; i++) {
-      data[i] = Math.random() * 2 - 1;
+
+    for (let ni = 0; ni < notes.length; ni++) {
+      const n = notes[ni];
+      const freq = 65.41 * Math.pow(2, n.pitch / 12);
+      const baseVol = n.vol / 7;
+      const startSamp = Math.floor(ni * noteLen * sr);
+      const endSamp = Math.floor((ni + 1) * noteLen * sr);
+      const noteSamps = endSamp - startSamp;
+
+      // PICO-8 noise: sample-and-hold at the note's frequency
+      let holdSamples = Math.max(1, Math.floor(sr / freq));
+      let holdVal = Math.random() * 2 - 1;
+      let holdCount = 0;
+
+      for (let s = 0; s < noteSamps; s++) {
+        const idx = startSamp + s;
+        if (idx >= bufLen) break;
+        const fade = 1 - (s / noteSamps); // fade-out effect (effect=5)
+        if (holdCount >= holdSamples) {
+          holdVal = Math.random() * 2 - 1;
+          holdCount = 0;
+        }
+        data[idx] = holdVal * baseVol * fade * 0.35;
+        holdCount++;
+      }
     }
+
     const noise = this.ctx.createBufferSource();
     noise.buffer = buf;
-    const lpf = this.ctx.createBiquadFilter();
-    lpf.type = 'lowpass';
-    lpf.frequency.setValueAtTime(2000, t);
-    lpf.frequency.exponentialRampToValueAtTime(400, t + 0.15);
-    const noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.28, t);
-    noiseGain.gain.linearRampToValueAtTime(0.0, t + 0.15);
-    noise.connect(lpf).connect(noiseGain).connect(this.masterGain);
+    noise.connect(this.masterGain);
     noise.start(t);
-    noise.stop(t + 0.15);
-
-    // Fast descending square wave — deeper start for punchier pop
-    const osc = this.ctx.createOscillator();
-    const oscGain = this.ctx.createGain();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(350, t);
-    osc.frequency.exponentialRampToValueAtTime(40, t + 0.12);
-    oscGain.gain.setValueAtTime(0.2, t);
-    oscGain.gain.linearRampToValueAtTime(0.0, t + 0.12);
-    osc.connect(oscGain).connect(this.masterGain);
-    osc.start(t);
-    osc.stop(t + 0.12);
+    noise.stop(t + totalDur);
   }
 
   // ─── PLAYER DEATH ───
