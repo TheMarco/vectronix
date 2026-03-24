@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run pico8:sync-standalone && vite build",
     "build:ios": "vite build && npx cap sync ios",
     "android:init": "npx cap add android && node scripts/setup-android.cjs",
     "android:build": "vite build && cp dist/android.html dist/index.html && npx cap sync android",
@@ -15,6 +15,7 @@
     "pico8:sync-sprites": "node pico8/tools/sync-sprites.mjs",
     "pico8:build": "node pico8/tools/sync-sprites.mjs && node pico8/tools/build-cart.mjs",
     "pico8:all": "node pico8/tools/seed-spritesheet.mjs && node pico8/tools/sync-sprites.mjs && node pico8/tools/build-cart.mjs",
+    "pico8:sync-standalone": "cp pico8/standalone/* public/pico8/standalone/",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build --target universal-apple-darwin"
   },
