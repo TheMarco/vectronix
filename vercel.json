@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/pico8/standalone/:path*", "destination": "/pico8/standalone/:path*" },
-    { "source": "/((?!pico8/).*)", "destination": "/index.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
