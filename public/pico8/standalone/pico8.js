@@ -1,7 +1,8 @@
 // PICO-8 API Shim — Canvas-based runtime for standalone deployment
 // Implements the subset of PICO-8 API used by Pocket Swarm
 
-const P8 = (() => {
+// eslint-disable-next-line no-var
+var P8 = (() => {
   // PICO-8 16-color palette
   const PALETTE = [
     '#000000', '#1D2B53', '#7E2553', '#008751',

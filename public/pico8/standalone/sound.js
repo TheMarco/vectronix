@@ -1,7 +1,8 @@
 // PICO-8 Sound Engine — Pre-rendered AudioBuffer approach
 // All SFX are rendered to buffers at init for reliable, glitch-free playback
 
-const P8Sound = (() => {
+// eslint-disable-next-line no-var
+var P8Sound = (() => {
   let audioCtx = null;
   const channels = [null, null, null, null];
   const sfxBuffers = []; // Pre-rendered AudioBuffers
