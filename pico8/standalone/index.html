@@ -1,4 +1,58 @@
-000070000000700000600600000660000d0000d000d00d00a000000a0a0000a00a0000a0000dd000d000000d00d00d000d0000d0c008800c0008800000088000
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Pocket Swarm</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
+    body {
+      display: flex; justify-content: center; align-items: center;
+      font-family: monospace;
+    }
+    #game-container {
+      position: relative;
+      display: flex; justify-content: center; align-items: center;
+    }
+    canvas {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      border: 2px solid #333;
+    }
+    #start-overlay {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: flex; justify-content: center; align-items: center;
+      cursor: pointer; z-index: 10;
+    }
+    #start-overlay span {
+      color: #fff; font-size: 18px; text-transform: uppercase;
+      letter-spacing: 2px; animation: blink 1s infinite;
+    }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    #touch-zone {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 5; touch-action: none; display: none;
+    }
+    @media (hover: none) and (pointer: coarse) {
+      #touch-zone { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="start-overlay"><span>Click to Start</span></div>
+  </div>
+
+  <div id="touch-zone"></div>
+
+  <script src="pico8.js"></script>
+  <script src="sound.js"></script>
+  <script src="game.js"></script>
+  <script>
+    // Embedded GFX data (from pico8/generated/gfx.txt)
+    const GFX_DATA = `000070000000700000600600000660000d0000d000d00d00a000000a0a0000a00a0000a0000dd000d000000d00d00d000d0000d0c008800c0008800000088000
 000070000000700004488440004444006000000606000060d00dd00d0d0dd0d00d0dd0d0000dd0000d0000d00d0000d000d00d00c00dd00c0c0dd0c0000dd000
 00088800000888004846648404866840640dd046064dd460d0dddd0d0dddddd00dddddd0000e0000000e0000000e0000000e00000cddddc00cddddc00cddddc0
 000c7c00000c7c00840cc048084cc480644cc446064cc4600ddeedd000deed0000deed00dde7e0dd00e7e00000e7e00000e7e0000c0000c00c0000c00c0000c0
@@ -125,4 +179,117 @@ a009000a0000000000888000006666000cc00cc0c00cc00c008888000088880000eeee0000888800
 0000000000009a9000008888888888888820000028222000008888228888888000888888888888880028888880288000000028888888800000000009a9000000
 00000000000009000000088888888882000000000000000000022000088888200008888888888200000288880000000000000288888800000000000090000000
 0000000000000000a0000088888820000000000000000000000000000028820000028882000000000000288000000000000000000000000000000000000a0000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000`;
+
+    // --- Bootstrap ---
+    const container = document.getElementById('game-container');
+    const overlay = document.getElementById('start-overlay');
+
+    // Calculate best integer scale
+    function calcScale() {
+      const maxW = window.innerWidth - 16;
+      const maxH = window.innerHeight - 16;
+      return Math.max(1, Math.min(Math.floor(maxW / 128), Math.floor(maxH / 128)));
+    }
+
+    let scale = calcScale();
+    const cvs = P8.init(container, scale);
+
+    window.addEventListener('resize', () => {
+      const newScale = calcScale();
+      if (newScale !== scale) {
+        scale = newScale;
+        cvs.style.width = (128 * scale) + 'px';
+        cvs.style.height = (128 * scale) + 'px';
+      }
+    });
+
+    // Load spritesheet
+    P8.loadSpriteSheet(GFX_DATA);
+
+    // Mobile: touch position controls movement, auto-fire is always on
+    const isMobile = matchMedia('(hover: none) and (pointer: coarse)').matches;
+    const touchZone = document.getElementById('touch-zone');
+    container.appendChild(touchZone); // move inside container so it overlays canvas
+
+    let touchActive = false;
+    let touchX = 0.5; // 0..1 normalized x position
+    let mobileTapped = false;
+
+    touchZone.addEventListener('touchstart', e => {
+      e.preventDefault();
+      touchActive = true;
+      mobileTapped = true;
+      const t = e.touches[0];
+      const rect = cvs.getBoundingClientRect();
+      touchX = (t.clientX - rect.left) / rect.width;
+    });
+    touchZone.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const t = e.touches[0];
+      const rect = cvs.getBoundingClientRect();
+      touchX = (t.clientX - rect.left) / rect.width;
+    });
+    touchZone.addEventListener('touchend', e => {
+      e.preventDefault();
+      touchActive = false;
+    });
+    touchZone.addEventListener('touchcancel', e => {
+      touchActive = false;
+    });
+
+    // Expose mobile state to game code
+    window.MOBILE = isMobile;
+    window.mobileTouch = () => ({ active: touchActive, x: touchX });
+    window.consumeMobileTap = () => { const t = mobileTapped; mobileTapped = false; return t; };
+
+    // Start on click/tap (needed for audio context)
+    let started = false;
+    overlay.addEventListener('click', () => {
+      if (started) return;
+      started = true;
+      overlay.style.display = 'none';
+      P8Sound.ensureAudioCtx();
+      _init();
+      requestAnimationFrame(gameLoop);
+    });
+
+    // Also start on any key
+    window.addEventListener('keydown', (e) => {
+      if (!started) {
+        started = true;
+        overlay.style.display = 'none';
+        P8Sound.ensureAudioCtx();
+        _init();
+        requestAnimationFrame(gameLoop);
+      }
+    }, { once: false });
+
+    // Game loop at 30fps (PICO-8 default)
+    const FRAME_TIME = 1000 / 30;
+    let lastTime = 0;
+    let accumulator = 0;
+    let loopStarted = false;
+
+    function gameLoop(timestamp) {
+      if (!loopStarted) { lastTime = timestamp; loopStarted = true; }
+      const delta = timestamp - lastTime;
+      lastTime = timestamp;
+      accumulator += delta;
+
+      // Cap accumulator to prevent spiral of death
+      if (accumulator > FRAME_TIME * 4) accumulator = FRAME_TIME * 4;
+
+      while (accumulator >= FRAME_TIME) {
+        _update();
+        P8.updateInput();
+        accumulator -= FRAME_TIME;
+      }
+
+      _draw();
+      P8.flip();
+      requestAnimationFrame(gameLoop);
+    }
+  </script>
+</body>
+</html>

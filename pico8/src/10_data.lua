@@ -74,6 +74,16 @@ function spawn_wave_enemy(kind,row,col,slot)
  local def=enemy_defs[kind]
  local tx,ty=enemy_slot_xy(row,col)
  local side=(slot%2==0) and -20 or 148
+ local boss_behavior=0
+ if kind=="boss" then
+  if wave>=15 then
+   boss_behavior=(wave+col+slot)%4
+  elseif wave>=11 then
+   boss_behavior=(wave+col+slot)%3
+  elseif wave>=7 then
+   boss_behavior=(wave+col+slot)%2
+  end
+ end
  return {
   kind=kind,
   row=row,
@@ -98,7 +108,10 @@ function spawn_wave_enemy(kind,row,col,slot)
   dive_total=1,
   captured=false,
   beam_t=0,
-  beam_x=0
+  beam_x=0,
+  beam_len=80,
+  shot_max=0,
+  boss_behavior=boss_behavior
  }
 end
 
@@ -129,18 +142,18 @@ function build_challenge_wave()
  local stage=flr((wave/5)-1)
  local challenge_kind=challenge_cycle[(stage%#challenge_cycle)+1]
  local layouts={
-  {1,2,3,4,5,2},
-  {2,4,1,5,3,2},
-  {5,3,4,1,2,5},
-  {4,1,5,2,3,4},
-  {3,5,2,4,1,3}
+  {1,2,4,3,1},
+  {2,1,3,4,2},
+  {4,3,1,2,5},
+  {3,4,2,1,3},
+  {5,1,4,3,5}
  }
  local layout=layouts[(stage%#layouts)+1]
- -- 6 groups of 4, staggered entry
- for grp=0,5 do
+ -- 5 groups of 4 enemies with slow, readable spacing
+ for grp=0,4 do
   local pat=layout[grp+1]
   local dir=(grp%2==0) and 1 or -1
-  local grp_delay=grp*68
+  local grp_delay=grp*84
   for j=0,3 do
    challenge_total+=1
    add(enemies,{
@@ -156,7 +169,7 @@ function build_challenge_wave()
     dir=dir,
     state="challenge",
     hp=1,
-    t=-(grp_delay+j*8),
+    t=-(grp_delay+j*10),
     anim=flr(rnd(60)),
     spawn_t=0,
     dive_kind=pat,
@@ -166,7 +179,11 @@ function build_challenge_wave()
     dive_slot=j,
     dive_total=4,
     captured=false,
-    beam_t=0
+    beam_t=0,
+    beam_x=0,
+    beam_len=80,
+    shot_max=0,
+    boss_behavior=0
    })
   end
  end

@@ -1,5 +1,5 @@
 pico-8 cartridge // http://www.pico-8.com
-version 41
+version 43
 __lua__
 -- 00_consts.lua
 screen_w=128
@@ -79,6 +79,20 @@ function dist2(x1,y1,x2,y2)
  return dx*dx+dy*dy
 end
 
+function seg_point_dist2(ax,ay,bx,by,px,py)
+ local abx=bx-ax
+ local aby=by-ay
+ local ab2=abx*abx+aby*aby
+ if ab2<=0 then
+  return dist2(ax,ay,px,py)
+ end
+ local t=((px-ax)*abx+(py-ay)*aby)/ab2
+ t=clamp(t,0,1)
+ local cx=ax+abx*t
+ local cy=ay+aby*t
+ return dist2(cx,cy,px,py)
+end
+
 function enemy_slot_xy(row,col)
  local sway=sin(form_t/240+row*0.03)*6
  local bob=sin((form_t+col*9)/200)*1.5
@@ -91,9 +105,16 @@ function add_score(pts)
   score_lo-=1000
   score_hi+=1
  end
+ if demo_mode then return end
  if score_hi>hi_hi or (score_hi==hi_hi and score_lo>hi_lo) then
   hi_hi=score_hi
   hi_lo=score_lo
+  if save_hi_score then
+   save_hi_score()
+  end
+ end
+ if check_extra_life_reward then
+  check_extra_life_reward()
  end
 end
 
@@ -195,6 +216,16 @@ function spawn_wave_enemy(kind,row,col,slot)
  local def=enemy_defs[kind]
  local tx,ty=enemy_slot_xy(row,col)
  local side=(slot%2==0) and -20 or 148
+ local boss_behavior=0
+ if kind=="boss" then
+  if wave>=15 then
+   boss_behavior=(wave+col+slot)%4
+  elseif wave>=11 then
+   boss_behavior=(wave+col+slot)%3
+  elseif wave>=7 then
+   boss_behavior=(wave+col+slot)%2
+  end
+ end
  return {
   kind=kind,
   row=row,
@@ -219,7 +250,10 @@ function spawn_wave_enemy(kind,row,col,slot)
   dive_total=1,
   captured=false,
   beam_t=0,
-  beam_x=0
+  beam_x=0,
+  beam_len=80,
+  shot_max=0,
+  boss_behavior=boss_behavior
  }
 end
 
@@ -250,18 +284,18 @@ function build_challenge_wave()
  local stage=flr((wave/5)-1)
  local challenge_kind=challenge_cycle[(stage%#challenge_cycle)+1]
  local layouts={
-  {1,2,3,4,5,2},
-  {2,4,1,5,3,2},
-  {5,3,4,1,2,5},
-  {4,1,5,2,3,4},
-  {3,5,2,4,1,3}
+  {1,2,4,3,1},
+  {2,1,3,4,2},
+  {4,3,1,2,5},
+  {3,4,2,1,3},
+  {5,1,4,3,5}
  }
  local layout=layouts[(stage%#layouts)+1]
- -- 6 groups of 4, staggered entry
- for grp=0,5 do
+ -- 5 groups of 4 enemies with slow, readable spacing
+ for grp=0,4 do
   local pat=layout[grp+1]
   local dir=(grp%2==0) and 1 or -1
-  local grp_delay=grp*68
+  local grp_delay=grp*84
   for j=0,3 do
    challenge_total+=1
    add(enemies,{
@@ -277,7 +311,7 @@ function build_challenge_wave()
     dir=dir,
     state="challenge",
     hp=1,
-    t=-(grp_delay+j*8),
+    t=-(grp_delay+j*10),
     anim=flr(rnd(60)),
     spawn_t=0,
     dive_kind=pat,
@@ -287,7 +321,11 @@ function build_challenge_wave()
     dive_slot=j,
     dive_total=4,
     captured=false,
-    beam_t=0
+    beam_t=0,
+    beam_x=0,
+    beam_len=80,
+    shot_max=0,
+    boss_behavior=0
    })
   end
  end
@@ -299,16 +337,103 @@ function _init()
  init_port()
 end
 
+ufo_sfx_chan=3
+beam_sfx_chan=3
+capture_sfx_chan=3
+player_death_sfx_chan=2
+boss_pick_chances={0.45,0.7,0.6,0.55}
+boss_tractor_chances={0.55,0.72,0.3,0.45}
+boss_beam_lens={80,64,88,72}
+
+function load_hi_score()
+ local saved=max(0,flr(dget(0)))
+ hi_hi=flr(saved/1000)
+ hi_lo=saved%1000
+end
+
+function save_hi_score()
+ dset(0,hi_hi*1000+hi_lo)
+end
+
+function play_beam_sfx()
+ if beam_sfx_active then return end
+ sfx(21,beam_sfx_chan)
+ beam_sfx_active=true
+end
+
+function stop_ufo_sfx()
+ sfx(-1,ufo_sfx_chan)
+end
+
+function stop_beam_sfx()
+ if not beam_sfx_active then return end
+ sfx(-1,beam_sfx_chan)
+ beam_sfx_active=false
+end
+
+function play_player_death_sfx()
+ sfx(7,player_death_sfx_chan)
+end
+
+function stop_capture_sfx()
+ sfx(-1,capture_sfx_chan)
+end
+
+function play_jingle(n)
+ stop_ufo_sfx()
+ stop_beam_sfx()
+ stop_capture_sfx()
+ sfx(-1,player_death_sfx_chan)
+ music(n)
+end
+
+function enter_gameover()
+ gameover_t=0
+ mode="gameover"
+ play_jingle(2)
+end
+
+function return_to_title()
+ demo_mode=false
+ title_idle_t=0
+ title_t=0
+ gameover_t=0
+ music(-1)
+ stop_ufo_sfx()
+ stop_beam_sfx()
+ stop_capture_sfx()
+ mode="title"
+end
+
 function init_port()
  hi_hi=0
  hi_lo=0
- power_cycle=1
+ cartdata("vectronix_galaga_p8")
+ load_hi_score()
  title_t=0
+ title_idle_t=0
+ beam_sfx_active=false
+ demo_mode=false
+ pending_start_jingle=false
  mode="title"
- reset_run()
+ reset_run(false)
 end
 
-function reset_run()
+function check_extra_life_reward()
+ if extra_life_awarded or score_hi<20 then return end
+ extra_life_awarded=true
+ if ships<3 then
+  ships+=1
+  sfx(10,player_death_sfx_chan)
+  show_notice("extra ship",90)
+  if mode=="gameover" then
+   mode="play"
+   gameover_t=0
+  end
+ end
+end
+
+function reset_run(run_demo)
  score_hi=0
  score_lo=0
  wave=0
@@ -329,18 +454,23 @@ function reset_run()
  magnet_t=0
  freeze_t=0
  shield_t=0
- wave_t=0
  wave_banner_t=0
  wave_clear_t=0
  result_t=0
  result_bonus=0
  notice_t=0
  notice_text=""
+ demo_mode=run_demo or false
+ demo_t=0
+ gameover_t=0
  challenge=false
  challenge_hits=0
  challenge_total=0
  form_t=0
  dive_t=90
+ stop_ufo_sfx()
+ stop_beam_sfx()
+ stop_capture_sfx()
  player={
   x=64,
   y=player_y,
@@ -357,7 +487,6 @@ function reset_run()
 end
 
 function start_wave()
- sfx(3)
  wave+=1
  bullets={}
  ebullets={}
@@ -372,6 +501,18 @@ function start_wave()
  wave_clear_t=0
  result_t=0
  result_bonus=0
+ music(-1)
+ stop_ufo_sfx()
+ stop_beam_sfx()
+ stop_capture_sfx()
+ if wave==1 then
+  if pending_start_jingle and not demo_mode then
+   play_jingle(0)
+  end
+  pending_start_jingle=false
+ else
+  sfx(8,player_death_sfx_chan)
+ end
  clear_timed_powerups()
  if wave%5==0 then
   build_challenge_wave()
@@ -394,14 +535,32 @@ end
 
 function update_title()
  if btnp(4) or btnp(5) then
+  pending_start_jingle=true
   mode="play"
-  reset_run()
+  reset_run(false)
+  return
+ end
+ if btnp(0) or btnp(1) then
+  title_idle_t=0
+ else
+  title_idle_t+=1
+ end
+ if title_idle_t>=480 then
+  pending_start_jingle=false
+  mode="play"
+  reset_run(true)
  end
 end
 
 function update_gameover()
- if btnp(4) or btnp(5) then
-  mode="title"
+ gameover_t+=1
+ local accept_input=gameover_t>60
+ if demo_mode then
+  if (accept_input and (btnp(0) or btnp(1) or btnp(4) or btnp(5))) or gameover_t>90 then
+   return_to_title()
+  end
+ elseif accept_input and (btnp(4) or btnp(5)) then
+  return_to_title()
  end
 end
 
@@ -416,6 +575,13 @@ function update_stars()
 end
 
 function update_play()
+ if demo_mode then
+  demo_t+=1
+  if btnp(0) or btnp(1) or btnp(4) or btnp(5) or demo_t>1800 then
+   return_to_title()
+   return
+  end
+ end
  player.anim+=1
  if player.fire_t>0 then player.fire_t-=1 end
  if player.inv>0 then player.inv-=1 end
@@ -426,7 +592,6 @@ function update_play()
  if magnet_t>0 then magnet_t-=1 end
  if freeze_t>0 then freeze_t-=1 end
  if shield_t>0 then shield_t-=1 end
- if shield_t<=0 then shield_t=0 end
 
  if freeze_t<=0 then
   form_t+=1
@@ -445,27 +610,24 @@ function update_play()
  update_capture_anim()
  check_collisions()
  check_wave_state()
- if not extra_life_awarded and score_hi>=20 then
-  extra_life_awarded=true
-  if ships<3 then
-   ships+=1
-   sfx(5)
-   show_notice("extra ship",90)
-  end
- end
 end
 
 function update_player()
  if player.alive then
   local old_x=player.x
   local spd=player.dual and 1.75 or 2.25
-  if btn(0) then player.x-=spd end
-  if btn(1) then player.x+=spd end
+  local fire=false
+  if demo_mode then
+   fire=update_demo_player(spd)
+  else
+   if btn(0) then player.x-=spd end
+   if btn(1) then player.x+=spd end
+   fire=rapid_t>0 and (btn(4) or btn(5)) or (btnp(4) or btnp(5))
+  end
   local margin=player.dual and 8 or 4
   player.x=clamp(player.x,field_l+margin,field_r-margin)
   player.vx=player.x-old_x
-  local fire=rapid_t>0 and (btn(4) or btn(5)) or (btnp(4) or btnp(5))
-  if fire and player.fire_t<=0 and wave_banner_t<=0 then
+  if fire and player.fire_t<=0 and (challenge or wave_banner_t<=0) then
    if fire_player() then
     player.fire_t=(rapid_t>0) and 4 or 8
    end
@@ -482,7 +644,7 @@ function update_player()
    player.x=64
    player.y=player_y
   else
-   mode="gameover"
+   enter_gameover()
   end
  end
 end
@@ -496,12 +658,12 @@ function fire_player()
  end
  if n>=cap then return false end
  if player.dual then
-  add(bullets,{x=player.x-4,y=player.y-4,vx=0,vy=-3.4,t=0})
-  add(bullets,{x=player.x+4,y=player.y-4,vx=0,vy=-3.4,t=0})
+  add(bullets,{x=player.x-4,y=player.y-4,px=player.x-4,py=player.y-4,vx=0,vy=-3.4,t=0})
+  add(bullets,{x=player.x+4,y=player.y-4,px=player.x+4,py=player.y-4,vx=0,vy=-3.4,t=0})
  else
-  add(bullets,{x=player.x,y=player.y-4,vx=0,vy=-3.4,t=0})
+  add(bullets,{x=player.x,y=player.y-4,px=player.x,py=player.y-4,vx=0,vy=-3.4,t=0})
  end
- sfx(0)
+ sfx(5,player_death_sfx_chan)
  return true
 end
 
@@ -535,12 +697,58 @@ function player_hit_test(x,y,rx,ry)
  return false
 end
 
+function bullet_enemy_hit(b,e)
+ local rx=6+enemy_defs[e.kind].w*2
+ local ry=6+enemy_defs[e.kind].h*2
+ if abs(b.x-e.x)<rx and abs(b.y-e.y)<ry then
+  return true
+ end
+ if not b.px or not e.px then
+  return false
+ end
+ local hit_r=(challenge and 7 or 6)+enemy_defs[e.kind].w
+ local mid_x=(e.x+e.px)*0.5
+ local mid_y=(e.y+e.py)*0.5
+ local best=min(
+  seg_point_dist2(b.px,b.py,b.x,b.y,e.x,e.y),
+  seg_point_dist2(b.px,b.py,b.x,b.y,e.px,e.py)
+ )
+ best=min(best,seg_point_dist2(b.px,b.py,b.x,b.y,mid_x,mid_y))
+ return best<hit_r*hit_r
+end
+
+function spinner_deflects(e)
+ return flr((e.anim+e.row*3+e.col*5)/2)%6==0
+end
+
+function phantom_intangible(e)
+ return flr((e.anim+e.row*7+e.col*5)/3)%10>=7
+end
+
+function boss_target_x(e)
+ local aim_x=player.x
+ if e.hp<2 or e.boss_behavior==3 then
+  aim_x=player.x+player.vx*10
+ elseif e.boss_behavior==1 then
+  aim_x=player.x+player.vx*6
+ end
+ return clamp(aim_x,field_l+6,field_r-6)
+end
+
 function dive_shot_count(e)
- local wave_shots=min(3,1+flr((wave-1)/3))
+ local wave_shots=min(4,1+flr((wave-1)/3))
  if e.kind=="guardian" then return 0 end
- if e.kind=="swarm" then return max(1,wave_shots-1) end
- if e.kind=="bomber" then return wave_shots+1 end
- return wave_shots
+ if e.kind=="bomber" or e.kind=="commander" or e.kind=="boss" then
+  wave_shots+=1
+ elseif e.kind=="swarm" then
+  wave_shots=max(1,wave_shots-1)
+ elseif e.kind=="attacker" and wave>=10 then
+  wave_shots+=1
+ end
+ if e.kind=="boss" and (e.boss_behavior==1 or e.boss_behavior==3 or e.hp<2) then
+  wave_shots+=1
+ end
+ return min(5,wave_shots)
 end
 
 function start_enemy_dive(e,dive_kind,target_x,delay,slot,total)
@@ -552,16 +760,68 @@ function start_enemy_dive(e,dive_kind,target_x,delay,slot,total)
  e.dive_kind=dive_kind
  e.dive_slot=slot or 0
  e.dive_total=total or 1
- e.shots=dive_shot_count(e)
- e.shot_t=12+flr(rnd(18))
+ e.shot_max=dive_shot_count(e)
+ e.shots=e.shot_max
+ e.shot_t=0.18+rnd(0.08)
+ if (slot or 0)<=0 and (not delay or delay>=0) then sfx(26,player_death_sfx_chan) end
  if dive_kind==5 or e.kind=="guardian" then
   e.shots=0
+  e.shot_max=0
  end
+end
+
+function update_demo_player(spd)
+ local margin=player.dual and 8 or 4
+ local target_x=64
+ local threat=nil
+ for b in all(ebullets) do
+  if b.y>player.y-44 and b.y<player.y+6 and abs(b.x-player.x)<18 then
+   threat=b
+   break
+  end
+ end
+
+ if threat then
+  target_x=player.x+(threat.x<=player.x and 18 or -18)
+ else
+  local aim=nil
+  local best=999
+  for e in all(enemies) do
+   if e.state~="queued" then
+    local rank=abs(e.x-player.x)+abs(e.y-60)
+    if rank<best then
+     best=rank
+     aim=e
+    end
+   end
+  end
+  if aim then
+   target_x=aim.x
+  end
+ end
+
+ target_x=clamp(target_x,field_l+margin,field_r-margin)
+ if player.x<target_x-1 then
+  player.x=min(target_x,player.x+spd)
+ elseif player.x>target_x+1 then
+  player.x=max(target_x,player.x-spd)
+ end
+
+ if wave_banner_t>0 or player.fire_t>0 or threat and abs(threat.x-player.x)<10 then return false end
+ if ufo and abs(ufo.x-player.x)<14 then return true end
+ for e in all(enemies) do
+  if e.state~="queued" and e.y<player.y and abs(e.x-player.x)<12 then
+   return true
+  end
+ end
+ return rnd(1)<0.04
 end
 
 function update_bullets()
  for b in all(bullets) do
   b.t+=1
+  b.px=b.x
+  b.py=b.y
   if magnet_t>0 then
    local target=nil
    local best=99999
@@ -574,12 +834,12 @@ function update_bullets()
      end
     end
    end
-   if target then
-    local dx=target.x-b.x
-    local dy=target.y-b.y
-    local mag=max(0.1,sqrt(dx*dx+dy*dy))
-    b.vx=clamp(b.vx+dx/mag*0.06,-2,2)
-    b.vy=clamp(b.vy+dy/mag*0.04,-3.8,-1.2)
+  if target then
+   local dx=target.x-b.x
+   local dy=min(-4,target.y-b.y)
+   local mag=max(0.1,sqrt(dx*dx+dy*dy))
+   b.vx=clamp(b.vx+dx/mag*0.2,-3,3)
+   b.vy=clamp(b.vy+dy/mag*0.16,-4.2,-0.8)
    end
   end
   b.x+=b.vx
@@ -638,6 +898,7 @@ end
 function update_capture_anim()
  if not capture_anim then return end
  if capture_anim.boss.state~="capturing" then
+  stop_capture_sfx()
   capture_anim=nil
   return
  end
@@ -647,7 +908,12 @@ function update_capture_anim()
  if capture_anim.y<=capture_anim.boss.y+6 then
   capture_anim.boss.captured=true
   capture_anim.boss.state="returning"
-  sfx(-1,3)
+  if ships<=0 then
+   player.captured=false
+   enter_gameover()
+  else
+   play_jingle(1)
+  end
   capture_anim=nil
  end
 end
@@ -665,6 +931,7 @@ function update_ufo(frozen_only)
     anim=0
    }
    ufo_t=1500
+   sfx(25,ufo_sfx_chan)
   end
   return
  end
@@ -673,36 +940,33 @@ function update_ufo(frozen_only)
   ufo.x+=ufo.dir*1.1
  end
  if ufo.x<-24 or ufo.x>152 then
+  stop_ufo_sfx()
   ufo=nil
  end
 end
 
 function try_group_dive(pool)
+ local row=flr(rnd(5))
  local best={}
- for row=0,4 do
-  local row_pool={}
+ for tries=1,5 do
+  best={}
   for e in all(pool) do
    if e.row==row and e.kind~="boss" and e.kind~="commander" and e.kind~="guardian" then
-    add(row_pool,e)
+    add(best,e)
    end
   end
-  if #row_pool>#best then
-   best=row_pool
-  end
+  if #best>=3 then break end
+  row=(row+1)%5
  end
  if #best<3 then return false end
- local group_n=wave>=14 and 4 or 3
+ local group_n=wave>=12 and 4 or 3
  group_n=min(group_n,#best)
- local start_idx=1
- if #best>group_n then
-  start_idx=1+flr(rnd(#best-group_n+1))
- end
+ local start_idx=1+flr(rnd(max(1,#best-group_n+1)))
  local center_x=player.x
  for i=0,group_n-1 do
   local e=best[start_idx+i]
   del(pool,e)
-  local offset=(i-(group_n-1)/2)*10
-  start_enemy_dive(e,6,center_x+offset,-i*0.08,i,group_n)
+  start_enemy_dive(e,6,center_x,-i*0.08,i,group_n)
  end
  return true
 end
@@ -711,7 +975,7 @@ function launch_pool_dive(pool)
  local pick=nil
  if not player.dual and not captured_boss and ships>1 then
   for e in all(pool) do
-   if e.kind=="boss" and rnd(1)<0.45 then
+   if e.kind=="boss" and rnd(1)<boss_pick_chances[1+e.boss_behavior] then
     pick=e
     break
    end
@@ -723,15 +987,16 @@ function launch_pool_dive(pool)
  if not pick then return end
  del(pool,pick)
 
- if pick.kind=="boss" and not captured_boss and ships>1 and not player.dual and not tractor_active() and rnd(1)<0.55 then
+ if pick.kind=="boss" and not captured_boss and ships>1 and not player.dual and not tractor_active() and rnd(1)<boss_tractor_chances[1+pick.boss_behavior] then
   pick.state="diving"
   pick.t=0
   pick.sx=pick.x
   pick.sy=pick.y
   pick.dive_kind=5
-  pick.beam_x=player.x
+  pick.beam_x=boss_target_x(pick)
+  pick.beam_len=boss_beam_lens[1+pick.boss_behavior]
   pick.shots=0
-  sfx(6)
+  sfx(11,capture_sfx_chan)
   return
  end
 
@@ -739,7 +1004,7 @@ function launch_pool_dive(pool)
   local buddy=pool[1+flr(rnd(#pool))]
   del(pool,buddy)
   if buddy then
-   start_enemy_dive(buddy,2,player.x+6,-0.06,1,2)
+   start_enemy_dive(buddy,2,clamp(player.x+6,field_l+6,field_r-6),-0.06,1,2)
   end
  end
 
@@ -753,7 +1018,7 @@ function launch_pool_dive(pool)
   end
   if escort then
    del(pool,escort)
-   start_enemy_dive(escort,4,player.x+8,-0.05,1,2)
+   start_enemy_dive(escort,4,clamp(player.x+8,field_l+6,field_r-6),-0.05,1,2)
   end
  end
 
@@ -795,13 +1060,17 @@ function launch_pool_dive(pool)
    dive_kind=4
   end
  elseif pick.kind=="boss" then
-  if rnd(1)<0.5 then
-   dive_kind=1
+  if pick.boss_behavior==3 then
+   dive_kind=7
   else
-   dive_kind=4
+   dive_kind=rnd(1)<0.5 and 1 or 3
   end
  end
- start_enemy_dive(pick,dive_kind,player.x)
+ local target_x=clamp(player.x+rnd(24)-12,field_l+6,field_r-6)
+ if pick.kind=="guardian" or pick.kind=="boss" then
+  target_x=boss_target_x(pick)
+ end
+ start_enemy_dive(pick,dive_kind,target_x)
 end
 
 function update_enemies()
@@ -816,6 +1085,8 @@ function update_enemies()
  end
 
  for e in all(enemies) do
+  e.px=e.x
+  e.py=e.y
   e.anim+=1
   if e.state=="queued" then
    e.spawn_t-=1
@@ -843,7 +1114,7 @@ function update_enemies()
    e.beam_t-=1
    if e.beam_t<=0 then
     e.state="returning"
-    sfx(-1,3)
+    stop_beam_sfx()
    else
     if player.alive and ships>1 and not captured_boss and abs(player.x-e.x)<10 then
      if player.dual then
@@ -851,7 +1122,8 @@ function update_enemies()
       player.inv=70
       explode_at(player.x+5,player.y)
       e.state="returning"
-      sfx(-1,3)
+      play_player_death_sfx()
+      stop_beam_sfx()
      else
       capture_player(e)
      end
@@ -879,14 +1151,19 @@ end
 
 function update_diving_enemy(e,mult)
  local cycle=flr((wave-1)/9)
- e.t+=0.012*enemy_defs[e.kind].speed*mult*(1+wave*0.03+cycle*0.15)
+ local speed=enemy_defs[e.kind].speed
+ if e.kind=="boss" then
+  if e.hp<2 then speed*=1.15 end
+  if e.boss_behavior==1 then speed*=1.1 end
+ end
+ e.t+=0.012*speed*mult*(1+wave*0.03+cycle*0.15)
  if e.kind=="boss" and e.dive_kind==5 then
   e.x=lerp(e.sx,e.beam_x,e.t)
   e.y=e.sy+e.t*70
   if e.t>=0.85 then
    e.state="beaming"
-   e.beam_t=80
-   sfx(7,3)
+   e.beam_t=e.beam_len or 80
+   play_beam_sfx()
   end
   return
  end
@@ -917,6 +1194,10 @@ function update_diving_enemy(e,mult)
   local offset=(e.dive_slot-(e.dive_total-1)/2)*8
   dx=tx*min(t,0.72)/0.72+offset+sin((t+e.dive_slot*0.14)*0.8)*6*e.dir
   dy=t*108
+ elseif e.dive_kind==7 then
+  local tx=e.target_x-e.sx
+  dx=tx*min(t,0.96)+sin(t*0.45)*3*e.dir
+  dy=t*118-sin(min(t,0.65)*1.2)*8
  else
   local tx=e.target_x-e.sx
   dx=tx*min(t,0.92)+sin(t*0.35)*4*e.dir
@@ -925,13 +1206,21 @@ function update_diving_enemy(e,mult)
  e.x=e.sx+dx
  e.y=e.sy+dy
 
+ if e.kind=="spinner" then
+  e.x+=sin(t*2.4+e.col*0.3)*4*e.dir
+ elseif e.kind=="phantom" then
+  e.x+=sin(t*3.2+e.col*0.4)*5*e.dir
+ elseif e.kind=="boss" and e.boss_behavior==3 then
+  e.x=lerp(e.x,boss_target_x(e),0.04)
+ end
+
  if e.shots>0 then
-  e.shot_t-=1
-  if e.shot_t<=0 and e.y>18 and e.y<104 and t>0.18 then
+  if e.y>18 and e.y<104 and t>=e.shot_t then
    enemy_fire(e)
    e.shots-=1
    if e.shots>0 then
-    e.shot_t=max(10,22-cycle*2)+flr(rnd(max(10,18-cycle)))
+    local fired=e.shot_max-e.shots
+    e.shot_t=min(0.88,0.2+(fired/max(1,e.shot_max))*0.58+rnd(0.05))
    end
   end
  end
@@ -948,40 +1237,27 @@ function update_challenge_enemy(e,mult)
   e.y=-20
   return
  end
- local t=e.t/150
- local pat=e.dive_kind
- local off=e.row*0.06
+ local t=e.t
+ local u=min(t/124,1)
+  local pat=e.dive_kind
+ local spread=(e.dive_slot-1.5)*14
+  local start_x=e.dir==1 and -12 or 140
+  local end_x=e.dir==1 and 140 or -12
+ local base_y=26+e.dive_slot*18
+  local pi=3.1415
+ e.x=lerp(start_x,end_x,u)
  if pat==1 then
-  -- swoop from left, arc down across screen, exit right
-  local px=e.dir==1 and -10 or 138
-  local ex=e.dir==1 and 138 or -10
-  e.x=lerp(px,ex,t)
-  e.y=20+sin(t*0.5+off)*45
+  e.y=base_y
  elseif pat==2 then
-  -- dive from top center, fan out, loop back up and exit top
-  local spread=(e.row-1.5)*14
-  e.x=64+spread+sin(t*0.8)*12*e.dir
-  e.y=-10+sin(min(t,0.5)*1.0)*130
+  e.y=base_y+sin(u*pi)*8
  elseif pat==3 then
-  -- enter from side, loop around center, exit same side
-  local px=e.dir==1 and -10 or 138
-  local ang=t*1.2+off
-  e.x=px+e.dir*(t*40)+sin(ang)*25*e.dir
-  e.y=55+cos(ang)*35
+  e.y=base_y+sin(u*pi*2+e.dive_slot*0.6)*6
  elseif pat==4 then
-  -- enter from top corners, cross in center, exit opposite bottom
-  local sx=e.dir==1 and (20+e.row*8) or (108-e.row*8)
-  local ex=e.dir==1 and (108-e.row*8) or (20+e.row*8)
-  e.x=lerp(sx,ex,t)
-  e.y=-10+t*140+sin(t*0.6+off)*15
+  e.y=base_y+cos(u*pi*2)*5
  else
-  -- spiral into the center, then dive out
-  local ang=t*2.2+off*6
-  local rad=max(6,34-t*22)
-  e.x=64+cos(ang)*rad*e.dir
-  e.y=16+t*108+sin(ang*0.7)*18
+  e.y=base_y+sin(u*pi*1.5)*10
  end
- if t>1.1 then
+ if t>132 then
   del(enemies,e)
  end
 end
@@ -995,27 +1271,16 @@ function trigger_dive()
  end
  if #holding<1 then return end
 
- local group_chance=0
- if wave>=14 then
-  group_chance=0.26
- elseif wave>=8 then
-  group_chance=0.14
- end
+ local group_chance=wave>=18 and 0.45 or wave>=12 and 0.35 or wave>=9 and 0.2 or wave>=8 and 0.1 or 0
  if not player.dual and group_chance>0 and rnd(1)<group_chance then
   if try_group_dive(holding) then
    return
   end
  end
 
- local dive_count=1
- if wave>=12 then
-  dive_count=1+flr(rnd(3))
- elseif wave>=5 then
-  dive_count=1+flr(rnd(2))
- end
- if wave>=16 and rnd(1)<0.35 then
-  dive_count=min(3,max(2,dive_count))
- end
+ local max_divers=wave>=18 and 4 or wave>=9 and 3 or wave>=4 and 2 or 1
+ local dive_count=min(#holding,max_divers)
+ if rnd(1)<0.7 and dive_count>1 then dive_count-=1 end
 
  for i=1,dive_count do
   if #holding<1 then break end
@@ -1032,6 +1297,13 @@ function tractor_active()
  return capture_anim~=nil
 end
 
+function fire_aim(x,y,tx,spd)
+ local dx=tx-x
+ local dy=max(8,player.y-y)
+ local mag=max(1,sqrt(dx*dx+dy*dy))
+ add(ebullets,{x=x,y=y+4,vx=dx/mag*spd,vy=dy/mag*spd})
+end
+
 function enemy_fire(e)
  if challenge then return end
  local shot=enemy_defs[e.kind].shot
@@ -1040,19 +1312,12 @@ function enemy_fire(e)
  if shot=="straight" then
   add(ebullets,{x=e.x,y=e.y+4,vx=0,vy=1.7*spd})
  elseif shot=="aim" then
-  local dx=player.x-e.x
-  local dy=max(8,player.y-e.y)
-  local mag=max(1,sqrt(dx*dx+dy*dy))
-  add(ebullets,{x=e.x,y=e.y+4,vx=dx/mag*1.5*spd,vy=dy/mag*1.5*spd})
+  fire_aim(e.x,e.y,player.x,1.5*spd)
  elseif shot=="boss" then
-  local aim_x=player.x
-  if e.hp<enemy_defs[e.kind].hp or wave>=8 then
-   aim_x=clamp(player.x+player.vx*8,field_l+4,field_r-4)
-  end
-  local dx=aim_x-e.x
-  local dy=max(8,player.y-e.y)
-  local mag=max(1,sqrt(dx*dx+dy*dy))
-  add(ebullets,{x=e.x,y=e.y+4,vx=dx/mag*1.55*spd,vy=dy/mag*1.55*spd})
+  local aim_x=(e.hp<2 or e.boss_behavior==3 or wave>=8) and boss_target_x(e) or player.x
+  local boss_spd=1.55
+  if e.boss_behavior==1 then boss_spd=1.7 end
+  fire_aim(e.x,e.y,aim_x,boss_spd*spd)
  elseif shot=="spread" then
   add(ebullets,{x=e.x,y=e.y+4,vx=0,vy=1.7*spd})
   add(ebullets,{x=e.x,y=e.y+4,vx=-0.7*spd,vy=1.5*spd})
@@ -1069,7 +1334,9 @@ function capture_player(e)
  player.respawn_t=90
  ships=max(0,ships-1)
  e.state="capturing"
- sfx(-1,3)
+ stop_beam_sfx()
+ stop_capture_sfx()
+ sfx(22,capture_sfx_chan)
  capture_anim={
   x=player.x,
   y=player.y,
@@ -1091,11 +1358,13 @@ function kill_enemy(e,diving_kill)
   add_score(diving_kill and def.dive_score or def.score)
  end
  explode_at(e.x,e.y)
- sfx(1)
- if e.state=="beaming" or e.state=="capturing" then sfx(-1,3) end
+ sfx(6,player_death_sfx_chan)
+ if e.state=="beaming" or e.state=="capturing" then stop_beam_sfx() end
+ if e.state=="capturing" then stop_capture_sfx() end
  if capture_anim and capture_anim.boss==e then
   capture_anim=nil
   player.captured=false
+  stop_capture_sfx()
  end
  if e.kind=="boss" then
   if e.captured then
@@ -1122,11 +1391,11 @@ function spawn_powerup(x,y)
 end
 
 function apply_powerup(kind)
- sfx(4)
+ sfx(9,player_death_sfx_chan)
  if kind=="extra" then
   if ships<3 then
    ships+=1
-   sfx(5)
+   sfx(10,player_death_sfx_chan)
   end
   show_notice("extra ship",90)
  elseif kind=="rapid" then
@@ -1159,15 +1428,16 @@ function hit_player()
   player.dual=false
   player.inv=70
   explode_at(player.x+5,player.y)
+  play_player_death_sfx()
   return
  end
  player.alive=false
  player.respawn_t=90
  ships-=1
  explode_at(player.x,player.y)
- sfx(2)
+ play_player_death_sfx()
  if ships<=0 then
-  mode="gameover"
+  enter_gameover()
  end
 end
 
@@ -1186,9 +1456,9 @@ function check_collisions()
       end
      end
      break
-    elseif e.kind=="phantom" and enemy_frame(e)>=3 then
-    elseif abs(b.x-e.x)<6+enemy_defs[e.kind].w*2 and abs(b.y-e.y)<6+enemy_defs[e.kind].h*2 then
-     if e.kind=="spinner" and enemy_frame(e)==2 then
+    elseif not challenge and e.kind=="phantom" and phantom_intangible(e) then
+    elseif bullet_enemy_hit(b,e) then
+     if not challenge and e.kind=="spinner" and spinner_deflects(e) then
       explode_at(b.x,b.y)
       del(bullets,b)
       break
@@ -1208,14 +1478,23 @@ function check_collisions()
 
  if ufo then
   for b in all(bullets) do
-   if abs(b.x-ufo.x)<10 and abs(b.y-ufo.y)<6 then
+  if abs(b.x-ufo.x)<10 and abs(b.y-ufo.y)<6 then
     add_score(300)
     explode_at(ufo.x,ufo.y)
     spawn_powerup(ufo.x,ufo.y)
+    stop_ufo_sfx()
     del(bullets,b)
     ufo=nil
     break
    end
+  end
+ end
+
+ for p in all(powerups) do
+  if player_hit_test(p.x,p.y,8,8) then
+   apply_powerup(p.kind)
+   del(powerups,p)
+   break
   end
  end
 
@@ -1245,15 +1524,8 @@ function check_collisions()
    player.dual=true
    show_notice("dual fighter",90)
   end
+  sfx(24,capture_sfx_chan)
   rescue_ship=nil
- end
-
- for p in all(powerups) do
-  if player_hit_test(p.x,p.y,8,8) then
-   apply_powerup(p.kind)
-   del(powerups,p)
-   break
-  end
  end
 end
 
@@ -1266,7 +1538,7 @@ function check_wave_state()
    result_bonus+=10000
    if ships<3 then
     ships+=1
-    sfx(5)
+    sfx(10,player_death_sfx_chan)
     show_notice("perfect! ship+",120)
    else
     show_notice("perfect!",90)
@@ -1296,17 +1568,18 @@ end
 function enemy_frame(e)
  local def=enemy_defs[e.kind]
  if e.kind=="spinner" then
+  if spinner_deflects(e) then return 2 end
   return (flr(e.anim/4)%4)+1
  elseif e.kind=="guardian" then
   if e.hp<=1 then return 4 end
   if e.hp==2 then return 3 end
   return (flr(e.anim/10)%2)+1
  elseif e.kind=="phantom" then
-  if flr(e.anim/6)%4>=2 then return 3+flr(e.anim/12)%2 end
+  if phantom_intangible(e) then return 3+flr(e.anim/12)%2 end
   return 1+flr(e.anim/10)%2
  elseif e.kind=="boss" then
   if e.state=="beaming" then return 4 end
-  if e.hp<=1 then return 3 end
+  if e.hp<2 then return 3 end
   return 1+flr(e.anim/10)%2
  elseif e.kind=="commander" or e.kind=="bomber" then
   if e.hp<enemy_defs[e.kind].hp then return 3 end
@@ -1339,19 +1612,23 @@ function draw_stars()
 end
 
 function draw_title()
- -- game logo (128x48 from spritesheet y=80)
- sspr(0,80,128,48,0,2)
+ -- game logo (128x56 from spritesheet y=72)
+ sspr(0,72,128,56,0,0)
  -- instructions
  local blink=flr(title_t/20)%2==0
  if blink then
-  print("\142/\151 to start",36,58,10)
+  print("\142/\151 to start",36,60,10)
  end
- print("\139\145 move  \142/\151 fire",16,70,6)
- -- studio logo (128x32 from spritesheet y=48)
- sspr(0,48,128,32,0,90)
+ print("\139\145 move  \142/\151 fire",16,72,6)
+ print("hi "..score_str(hi_hi,hi_lo),42,82,7)
+ print("demo after idle",30,90,5)
+ -- studio logo (128x24 from spritesheet y=48)
+ sspr(0,48,128,24,0,102)
 end
 
 function draw_playfield()
+ draw_planet_surface()
+ draw_bg_status()
  if ufo then draw_ufo() end
  draw_captured_ships()
  for e in all(enemies) do
@@ -1390,6 +1667,30 @@ function draw_playfield()
   if challenge_hits==challenge_total then
    print("perfect!",44,80,14)
   end
+ end
+end
+
+function draw_planet_surface()
+ -- planet surface strip (128x8 from spritesheet y=40)
+ sspr(0,40,128,8,0,120)
+end
+
+function draw_bg_status()
+ if notice_t>0 then return end
+ local text=nil
+ local x=nil
+ if player.captured then
+  text="ship captured"
+  x=64-#text*2
+ elseif captured_boss and captured_boss.captured then
+  text="captured ship in play"
+  x=64-#text*2
+ elseif demo_mode then
+  text="demo"
+  x=97
+ end
+ if text then
+  print(text,x,111,1)
  end
 end
 
@@ -1455,37 +1756,27 @@ function draw_hud()
  print("hi "..score_str(hi_hi,hi_lo),48,1,6)
  print("wv "..wave,102,1,10)
  print("ships "..max(ships-1,0),2,121,6)
- local x=62
- if rapid_t>0 then spr(power_icons.rapid,x,120) x+=8 end
- if shield_t>0 then spr(power_icons.shield,x,120) x+=8 end
- if slow_t>0 then spr(power_icons.slow,x,120) x+=8 end
- if magnet_t>0 then spr(power_icons.magnet,x,120) x+=8 end
- if freeze_t>0 then spr(power_icons.freeze,x,120) end
  if notice_t>0 then
   print(notice_text,64-#notice_text*2,111,11)
- elseif player.captured then
-  print("ship captured",34,111,8)
- elseif captured_boss and captured_boss.captured then
-  print("captured ship in play",18,111,14)
  end
 end
 __gfx__
-000070000000700000600600006006000d0000d000000000a000000a0a0000a00a0000a0000dd000d000000d00d00d000d0000d0009009000090090000999000
-00007000000070000448844004488440d000000d0d0000d0d00dd00d0d0dd0d00d0dd0d0000dd0000d0000d00d0000d000d00d00009999000099990004444400
-00088800000888004846648448466484d40dd04d0d4dd4d0d0dddd0d0dddddd00dddddd0000e0000000e0000000e0000000e0000099999900999999099999990
-000c7c00000c7c00840cc048840cc048d44cc44d0d4cc4d00ddeedd000deed0000deed00dde7e0dd00e7e00000e7e00000e7e000440440444400004444400440
-007c0c70007c0c700400004004000040d40dd04d0d4dd4d00dd88dd000d88d000dd88dd0dd0eeedd000eee00000eee00000eee00099999900999999009999900
-0077c7700077c7700440044004000040dd0000dd0dd00dd0d0dddd0d0dddddd00dddddd00000e0000000e000d000e00d0000e000004444000044440000444000
-07777777077777770040040000400400d000000d0d0000d0d00aa00d0d0aa0d00a0dd0a0000dd0000d0000d00d0000d0d000000d006666000090090008066000
-070808070708080700400400000000000d0000d000d00d00a000000a0a0000a0000aa000000dd000d000000d000000000d0000d0009009000000000000090000
-000cc000000cc000000cc000000880000006600000000000000dd0000000000000a00a0000bbbb00000dd000000dd00000007000000000000000000000000000
-00acca0000acca00006cc600006886000006600060066006000dd000d00dd00d00bbbb000bbbbbb000dddd0000dddd000007a70000000000000000000a090000
-0606606006066060068668600686686060dddd0660dddd06d044440dd044440d0bbbbbb0bbbbbbbb0dddddd00dddddd0000aaa0000088000000a0000009a9000
-ca0cc0acca0cc0acc60cc06c8608806866d88d6666d88d66dd4ee4dddd4ee4dd0ebbbbe0ebbbbbbe666666666666666600099900008aa80000a7700009a77900
-ca0cc0acca0cc0acc60cc06c8608806860dbbd0660dbbd06d04bb40dd04bb40d0bbbbbb0bbbbbbbb0a6666a00c6666c000009000008aa800000a0000009a9000
-0606606006066060060660600606606060dddd0660dddd06d044440dd044440d00bbbb000bbbbbb0006666000066660000009000000880000000000000090000
-00cccc0000cccc0000cccc00008888006060060600600600d0d00d0d00d00d000000000000bbbb00000dd000000dd000000000000000000000000000000000a0
-000aa000000aa0000006600000066000006006000000000000d00d00000000000000000000a00a00000000000000000000009000000000000000000000000000
+000070000000700000600600000660000d0000d000d00d00a000000a0a0000a00a0000a0000dd000d000000d00d00d000d0000d0c008800c0008800000088000
+000070000000700004488440004444006000000606000060d00dd00d0d0dd0d00d0dd0d0000dd0000d0000d00d0000d000d00d00c00dd00c0c0dd0c0000dd000
+00088800000888004846648404866840640dd046064dd460d0dddd0d0dddddd00dddddd0000e0000000e0000000e0000000e00000cddddc00cddddc00cddddc0
+000c7c00000c7c00840cc048084cc480644cc446064cc4600ddeedd000deed0000deed00dde7e0dd00e7e00000e7e00000e7e0000c0000c00c0000c00c0000c0
+007c0c70007c0c700400004000400400640dd046064dd4600dd88dd000d88d000dd88dd0dd0eeedd000eee00000eee00000eee00c0d00d0c0cd00dc000d00d00
+0077c7700077c77004400440004004006d0000d606d00d60d0dddd0d0dddddd00dddddd00000e0000000e000d000e00d0000e000c0dddd0c00dddd0000dddd00
+077777770777777700400400000440006000000606000060d00aa00d0d0aa0d00a0dd0a0000dd0000d0000d00d0000d0d000000d007dd70000dddd00007dd700
+070808070708080700400400000000000d0000d000d00d00a000000a0a0000a0000aa000000dd000d000000d000000000d0000d0000770000007700000077000
+067777600677776006777760067777600006600000000000000dd00000000000b0aaaa0b00aaaa00000660000006600000007000000000000000000000000000
+daaddaadddddddddd80dd08dd80dd08d0006600060066006000dd000d00dd00dbbbbbbbbbbbbbbbb0dddddd00dddddd00007a70000000000000000000a090000
+00dddd00009dd90000dd0d0000d00d0060dddd0660dddd06d044440dd044440d0b0000b00b0000b0daaddaadaddaadda000aaa0000088000000a0000009a9000
+000aa00000099000000080000000000066d88d6666d88d66dd4ee4dddd4ee4dd0bb00bb00bb00bb00dddddd00dddddd000099900008aa80000a7700009a77900
+000aa00000099000000800000000000060dbbd0660dbbd06d04bb40dd04bb40db0bbbb0bb0bbbb0b000000000000000000009000008aa800000a0000009a9000
+00dddd00009dd90000d0dd0000d00d0060dddd0660dddd06d044440dd044440db0bbbb0be0bbbb0e00dddd0000dddd0000009000000880000000000000090000
+daaddaadddddddddd80dd08dd80dd08d6060060600600600d0d00d0d00d00d00e00bb00e000ee0000000000000000000000000000000000000000000000000a0
+06777760067777600677776006777760006006000000000000d00d0000000000000ee00000000000000660000006600000009000000000000000000000000000
 a009000a0000000000888000006666000cc00cc0c00cc00c008888000088880000eeee0000888800000000000000000000000000000000000000000000000000
 009a90000000000008aaa800060000600cc00cc00707707008cccc8008cccc800ecccce008cccc80000000000000000000000000000000000000000000000000
 09a7a90000700070aabbbaa0600d7006088008800070070088c77c8888c77c88eec77cee88c77c88000000000000000000000000000000000000000000000000
@@ -1512,6 +1803,36 @@ a009000a0000000000888000006666000cc00cc0c00cc00c008888000088880000eeee0000888800
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000010111111111111115151551515515151515111151111111111101010000000000000000000000000000000000
+00000000000000000000000000010111111115155555555555555555555555551555555555555555555555555555555555111110100000000000000000000000
+00000000000000000000111111515555555555551515151515151515151515115515111115151555555555555555555555555555555511111100000000000000
+00000000000101111515555555555151515151515151515151515151515151551151551551515151151515151515555555555555555555555555111110000000
+00000111111555555151515151515515555555151515151515151515151515115111115115151515515151515151515155555555555555555555555555551110
+11111515555151151555151515151151111111515151515111515151115111111151511511515151151515151515151515115155555555555555555555555555
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000005dd500d7765000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000000000000005d55d0d76677100000000088800088000000888000888088088888000000888880088888008888008800088880088808800000000000000000
+00000000000001d50001760057600000000088800088000000888000888088088888800000888888088888088888808800888888088808800000000000000000
+00000000000005d00006700007700000000080800088000000808000888088088008800000880088088000088008808800880088088808800000000000000000
+00000000000005d500177d0017600000000080800088000000808000888088088008800000880088088000088008808800880088088808800000000000000000
+00000000000000dd006777dd77500000000880880088000008808800888088088008800000880088088000088800008800880088088808800000000000000000
+00000000000000005677777761000000000880880088000008808800888888088008800000880088088888008880008800880000088888800000000000000000
+00000000000000577777776101000000000880880088000008808800880888088008800000880088088888000888008800880888088088800000000000000000
+0000000000000177556777005d100000000880880088000008808800880888088008800000880088088000000088008800880888088088800000000000000000
+0000000000000d75000775000dd00000000880880088000008808800880888088008800000880088088000000008808800880088088088800000000000000000
+0000000000000d71000770000dd00000000888880088000008888800880888088008800000880088088000088008808800880088088088800000000000000000
+000000000000057600d750001d500000008888888088000088888880880888088008800000880088088000088008808800880088088088800000000000000000
+00000000000000d777760ddddd000000008800088088000088000880880088088888800000888888088888088888808800888888088008800000000000000000
+000000000000000567d0055d50000000008800088088000088000880880088088888000000888880088888008888008800088880088008800000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000777007700700370777700006760767060060777007006700077700000000000000000000000000000000000000000
+00000000000000000000000000000000006000070070770770700000070000070070070700707070070700000000000000000000000000000000000000000000
+00000000000000000000000000000000007077077760707070777000007700070070070700707070070077000000000000000000000000000000000000000000
+00000000000000000000000000000000007007070070700070700000000070070070070700707070070000700000000000000000000000000000000000000000
+00000000000000000000000000000000000777070070700070777700067700070007700777007007700777000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -1519,91 +1840,182 @@ a009000a0000000000888000006666000cc00cc0c00cc00c008888000088880000eeee0000888800
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000001003535310001ddddd00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000000000000135c6c6bd001aaaaaadd100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000dcddddd301aa99999aa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000013ddc111d11aa99224999410000001ddd50001dd1000001d3dd31000005ddddd5001dddddd501dddd200dd5005dddd5002dd000dd100000000000
-000000000001dcd100010da99100029aa100000016666000166100001b66666000000daaaaaa502aaaaaa219aaaaa50a7d05aaaaaa10daa200a7200000000000
-000000000001cdd0000019aa2000019aa10000001bdb30101db1000036353d50000004a9449a905a9999902a9444aa19a409a9449a904aaa109a500000000000
-000000000001ddc00000369a2000009aa10000001dbd31001bd100001cd1d210000004a4424a902a9444412a4224a909a404a4244a404aa9009a200000000000
-000000000001cdd100013dd941000299910000001bdbd3001db1000056311151000004a4524a902aa222204a92129404a404a4554a404aa9209a500000000000
-000000000001ddcd110bdbd4a4115a99410000001d1dbd001bd100001cd001dc100004a2002a905aa100002aa4014209a404a2002a404a99a14a200000000000
-0000000000000cddd11dcddd4999999410000000db53d3001db100001dddcdc6d00004a2005a902aa2011059aa412509a404a20012504a29a14a500000000000
-00000000000012d111dcddcddd499942000000056301bd001bd1000012cd6cdcc00004a2002a915a9aaa20244aa40019a404a20100004ad9a14a200000000000
-000000000000001666ddcddcdd444210100000036301db101db1000001dc1dd6500004a2005a902aaaaa500124aa4009a404a202aa404a24aaaa500000000000
-00000000000001dcdd1ddcddd4411121000000056d01bd001bd100001cd212cc200004a2002a905aa4441000144aa419a404a2029a404a11aaaa200000000000
-0000000000001cdd11d1cddd4410124410000001b353d3501d3100005dd101dd1000049200594029942410100144940494049501494049119999500000000000
-000000000001dd2211112dc44200144441000001d3d33d30135100001c5001dc0000049200294059411100242014941494049200294049102444200000000000
-000000000001ddd1000111244000024941000013515253d013310000161001dd100004920059402990000049401194049404950059404910d499500000000000
-000000000001dd2000001244100001444100001d521123301d5100001cd51dcd0000049444494059944441294444940494049444494049101499200000000000
-0000000000011dd000001d42100000944100001b111113d0133100001ddcdcdd1000049999992029999992149999920494029999942049100299500000000000
-0000000000012dd1000122d112000244d100001d10000551155100001ddd212dd0000244444420144444411244444d0242054444442024101244100000000000
-000000000001112d111d1d20245244421000001d100001d111d1000011212111100001dddddd101dddddd111dddd210dd101dddddd101d1001dd100000000000
-0000000000000212ddd21d0114444444000000010000011111100000011110111000011111110011111111011111100121001111110011100011100000000000
-0000000000000112111110012d2ddd22100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000001111100001d111100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000077700770070017077770000676076706006077700700670007770000000000000000000000000000000000000
-00000000000000000000000000000000000000600007007077077070000007000007007007070070707007070000000000000000000000000000000000000000
-00000000000000000000000000000000000000707707776070707077700000770007007007070070707007007700000000000000000000000000000000000000
-00000000000000000000000000000000000000700707007070007070000000007007007007070070707007000070000000000000000000000000000000000000
-00000000000000000000000000000000000000077707007070007077770006770007000770077700700770077700000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000016dd50000000dddd00d6dddddddd6006dddddddd6106dddd6ddddd650ddddddd610000016ddddd610005ddd0000016dd0000556dd6000000ddddd000000
-0000007556100000d656606600111115751750111111660d5011760111d70dd11111156500016501110675006d5660000dd56500d71661d60000d65d75000000
-000000d505600000600d0dd055555556506505555555d076555dd05555606755555550165057d155555d5650d100d6000d50d50ddd106505700d600610000000
-000000061061000dd05d1605655555550650d6dddddd01d5dddf016ddd00d5dd5dd5d605d06dd6ddddd60160d50006d005d0d1560d5006d056d6007500000000
-0000000dd056000600605d0dd11111000d00d00000000000000d05500000000000000600d0d00d00000d10d0d105006d0d50d1550d5000650570075000000000
-00000000610610dd05605d01d5d557d00d10d00000000000001605d00000dddddddddd0560d05d00000d50d0d507600655d0d15d0d500006505d650000000000
-000000005605d06006105d000000dd000d10d00000000000001d05d0000165501155501710d01d00000d10d0d10dd600d750d15d0d50000d6007700000000000
-000000000610d6d0d6005d056dd6d0000d10d00000000000001d05d00005d0055500056101d05d00000d10d0d50d0d6006d0d1550d5000560061560000000000
-0000000005d0570060005d0dd00000000600610000000000000605d00001d0565d61066000601d00000d5060d10d00d60010d15d0d10057006710d6000000000
-0000000000605d0dd00016056dddddd605605dd6dd6dd650005d05d00005d05d00570065006506dd6dd6d6d0d50d0006d000d15d0d5057006d06506d00000000
-000000000056d0061000056d50000005d06d000000006600001d01d00001d05d0005600610066d000000d600600d00006d00d5550d116006d005610dd0000000
-000000000006756500000057ddddddd5760665dddd56d0000006d6d000006d6d0000d656710066dd5ddd60006dd6000006dd6056d657656d000056d57d000000
-00000000000055500000000055555555150055555555000000055500000055500000055550000555555500001551000000555005550155500000015515000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000002222222222220002222222222000222222222222222220022222222222222222222222222222220000000000000000000000000
+00000000000000000000000088888888888888288888888888802888888888888888888888888888888888888888888888888888200000000000000000000000
+000000000000000000000002803333333330088200333333008882033333333320333088203303203333333333033333333333088000000000a0900000000000
+00000000000000a090000002837777777776202027777777600880c777777776027773280c776002777777777327777777777732800000000009a90000000000
+0000000000000009a90000028377777777777302777777777600027777777776027772002777603677777777732777777777773280000000009a779000000000
+000000000000009a77900002837776ccc6777c0c7777777777200677777777760277720077773027777777777327777777777732800000000009a90000000000
+0000000000000009a90000028377720003777c07777233c7776027777c32222302777306777c003777c22222203223c777232208800000000000900000000000
+00000a0900000000900000028377733880677c0777c0000677c02777600233082377732777608237773000002820203777302288200000000000000a00000000
+0000009a90000000000a00028377720200677c077730880677603777608888882377767777328237772003088888833777388282000000000000000000000000
+000009a7790000000000000283777c333c7772077720880677603777608888882377777773088237777677208888803777382000000000000000000000000000
+0000009a900000000000000283777777777770077720880677602777608888882377777760088237777777c0888880377738200000a090000000000000000000
+000000090000000000000002837777777777c007772088067760377760888888237776777c0282377766672088888037773820000009a9000000000000000000
+0000000000a000000000000283777c2222c30207772088067760377760888888237773c777c08237773000088888803777382000009a77900000000000000000
+000000000000000000000002837772000000880777c00006776027776000000223777037776002377730000003888037773820000009a9000000000000000000
+00000000000000a0900000028377732888888807777c226777603777762222c3027772027776003777c2ccc22028803777382000000090000000000000000000
+0000000000000009a9000002837773288888880c77777777773006777777777602777200c77760277777777773288037773820000000000a0000000000000000
+000000000000009a7790000283777208888888037777777776030277777777760277732207776037777777777328803777382000000000000000000000000000
+0000000000000009a9000002836773088888888036766667630880276666667c037773280c77600c766666676328803776382000000000000000000000000000
+00000000000000009000000280000088888888880000000000888800000000038000008820000220000000000088880000088288000000000000000a09000000
+0000000000000000000a00008882288200088888888888888888888288888828888888888828888828888888888888888888888880000000000000009a900000
+000000000000000000000028888000032230883002888888888800300288880000388888820000000038888820000288888800028800000000000009a7790000
+0000000000000000000008882000ccc677c00002c028888888803c02c088802cc200888000cccccccc3028880c32208888800cc038800000000000009a900000
+00000000000000000000882002677776220037327008888888803727608830c777c088036777777777760088066670088880677c028800000000000009000000
+0000000000000000000882026777777777c337c3720888888880c627608806677773280c777777777777608806777608880c777720888000000000000000a000
+0000000000000000002820c7777777777763076c760888888880776760802777777c000677776666777773000677773082067777608880000000000000000000
+000000000000000000880c7777777777c2c337777608888888806777638067777777c00277773000c7777600c777776020c77777738880000000000000000000
+0000000000000000008806777777c333000037777608888888037777600067777777c020677702820c777600c777777600677777708880000000000000000000
+00000000000000000088067777630282888202777c088000880677773006777c27772080777702f802777600c777777703777777603880000000000000000000
+00000000000000000088067777c008888888027776033363080c777730377773c7777300777702803677760367777777cc777777730882000000000000000000
+00000000a090000000880677776220000888037777200677300c777600377770277772007777200267777c0277777777777767777c0882000a09000000000000
+0000000009a900000088027777777c620008206777c02777c037776300c777c00c777200677776677777c0027777c677777702777c088200009a900000000000
+000000009a7790000028802777777777772000c77720677760277760836777202c77760027777777776208237777c377777602777c08820009a7790000000000
+0000000009a9000000088803677777777772006777237777722777600377776677777720277777777720282377773067777c02777c088200009a900000000000
+00000000009000000000888003666777777720c77777777776c777600677777777777760277777777773082377760027777202777c0882000009000000000000
+0000000000000a0000000888800002c777776007777776c7777777203777777776777772277763c777760823777600067760027776028800000000a000000000
+0000000000000000000000888888200277776037777776067777773037777766202777723777600c7777c0037776082066323277773088000000000000000000
+000000000000000000000000288882027777600c77777c027777773037777200220677720c777c037777720c7776088000082067772088000000000000000000
+0000000000000000000288882882002777777002777770006777760067776028880677760c777c003777760677760888888880c7772388000000000000000000
+00000000000000000028828200002c777777c00277772020c777720067776088880677760c7772080c77770c77730888888880c7772388000000000000000000
+00000000000000000088033336667777777c0220677720820677720067776088880377770c777208206777c0c773288222388067772088000000000000000000
+000000000000000000880cc77777777777c02880277c02880277730c7777208888007777cc777208802777720c7328800008806cc72088000000000000000000
+0000000000000000008803c6777777777c02888006602888202760027776028828237c772c777c088206777200c3288000088066072088000000000000000000
+00000000000a090000882376777776cc002888880000888882020220227c0888082372620663c30888007730820088800008806606338800000000a090000000
+0000000000009a90000880c77623300008888028888888208820088200cc088808837300033000888880cc0888888880000880330308880000000009a9000000
+000000000009a7790008800000020288888800028888880008888888820028820280003282088888838800888888880000028802828888000000009a77900000
+0000000000009a9000008888888888888820000028222000008888228888888000888888888888880028888880288000000028888888800000000009a9000000
+00000000000009000000088888888882000000000000000000022000088888200008888888888200000288880000000000000288888800000000000090000000
+0000000000000000a0000088888820000000000000000000000000000028820000028882000000000000288000000000000000000000000000000000000a0000
 __sfx__
+4d0210201842418441184511844118431184311843118431184311843118431184311843118431184311843118421184211842118421184211842118421184211842118421184211842118421184211842118421
+050110200025400251002510023100231002210022100221001210012100121001210012100121001110011100011000110001100011000110001100011000110001100011000110001100011000110001100011
+000f18002485024850238502385021850218501f8501f8501c8501c8501a8501a8501885018850178501785015850158501385013850108501085015850158500140001400014000140001400014000140001400
+000f1800219502195021950219501c9501c9501c9501c9501d9501d9501d9501d950189501895018950189501f9501f9501f9501f950219502195021950219500140001400014000140001400014000140001400
+000f180018850188501c8501c8501f8501f850248502485021850218501f8501f8501c8501c8501a8501a8501c8501c8501f8501f8501d8501d85018850188500140001400014000140001400014000140001400
 01020000303502c343243250000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 010400001867014660106500c63508625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0106000024670206731c6631865314643106330c62508615000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010500002e7522a76326471224631e2631a25316650126430e6350a62500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 01080000181401c1512015124160281602c1550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0104000024150281502b1603016030145000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 010800002415024150281602b16030170301603014530125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-010800002424022243202431e2531c2531a2531825016240142401223500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0106000022540205411d5501955116462124530f44500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 010400071204214052160521404212042140521605214042000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0105000716430194401d4401944014430184401b44018440000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+01070000185401f5501c4611745313445000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010500001c1402015023160281602c1702f1650000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010400071a7321e742227521e742187321c742207521c742000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010200002a76226762227621e7521a752167421273500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000f1800189501895018950189501f9501f9501f9501f950219502195021950219501f9501f9501f9501f9501d9501d9501d9501d9501f9501f95018950189500140001400014000140001400014000140001400
+000f1800158501585018850188501c8501c8501885018850158501585018850188501a8501a850188501885017850178501585015850138501385015850158500140001400014000140001400014000140001400
+000f180021950219502195021950219502195021950219501f9501f9501f9501f9501d9501d9501d9501d9501c9501c9501c9501c9501c9501c95021950219500140001400014000140001400014000140001400
+010400071204214052160521404212042140521605214042000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0105000716430194401d4401944014430184401b44018440000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+01070000185401f5501c4611745313445000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010500001c1402015023160281602c1702f1650000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010400071a7321e742227521e742187321c742207521c742000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010200002a76226762227621e7521a752167421273500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+__music__
+04 04124040
+04 13144040
+04 02034040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+00 40404040
+

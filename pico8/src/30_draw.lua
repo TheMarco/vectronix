@@ -20,19 +20,23 @@ function draw_stars()
 end
 
 function draw_title()
- -- game logo (128x48 from spritesheet y=80)
- sspr(0,80,128,48,0,2)
+ -- game logo (128x56 from spritesheet y=72)
+ sspr(0,72,128,56,0,0)
  -- instructions
  local blink=flr(title_t/20)%2==0
  if blink then
-  print("\142/\151 to start",36,58,10)
+  print("\142/\151 to start",36,60,10)
  end
- print("\139\145 move  \142/\151 fire",16,70,6)
- -- studio logo (128x32 from spritesheet y=48)
- sspr(0,48,128,32,0,90)
+ print("\139\145 move  \142/\151 fire",16,72,6)
+ print("hi "..score_str(hi_hi,hi_lo),42,82,7)
+ print("demo after idle",30,90,5)
+ -- studio logo (128x24 from spritesheet y=48)
+ sspr(0,48,128,24,0,102)
 end
 
 function draw_playfield()
+ draw_planet_surface()
+ draw_bg_status()
  if ufo then draw_ufo() end
  draw_captured_ships()
  for e in all(enemies) do
@@ -71,6 +75,30 @@ function draw_playfield()
   if challenge_hits==challenge_total then
    print("perfect!",44,80,14)
   end
+ end
+end
+
+function draw_planet_surface()
+ -- planet surface strip (128x8 from spritesheet y=40)
+ sspr(0,40,128,8,0,120)
+end
+
+function draw_bg_status()
+ if notice_t>0 then return end
+ local text=nil
+ local x=nil
+ if player.captured then
+  text="ship captured"
+  x=64-#text*2
+ elseif captured_boss and captured_boss.captured then
+  text="captured ship in play"
+  x=64-#text*2
+ elseif demo_mode then
+  text="demo"
+  x=97
+ end
+ if text then
+  print(text,x,111,1)
  end
 end
 
@@ -136,17 +164,7 @@ function draw_hud()
  print("hi "..score_str(hi_hi,hi_lo),48,1,6)
  print("wv "..wave,102,1,10)
  print("ships "..max(ships-1,0),2,121,6)
- local x=62
- if rapid_t>0 then spr(power_icons.rapid,x,120) x+=8 end
- if shield_t>0 then spr(power_icons.shield,x,120) x+=8 end
- if slow_t>0 then spr(power_icons.slow,x,120) x+=8 end
- if magnet_t>0 then spr(power_icons.magnet,x,120) x+=8 end
- if freeze_t>0 then spr(power_icons.freeze,x,120) end
  if notice_t>0 then
   print(notice_text,64-#notice_text*2,111,11)
- elseif player.captured then
-  print("ship captured",34,111,8)
- elseif captured_boss and captured_boss.captured then
-  print("captured ship in play",18,111,14)
  end
 end

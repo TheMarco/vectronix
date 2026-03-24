@@ -13,7 +13,7 @@
     "android:dev": "npm run android:build && npx cap open android",
     "pico8:init-sprites": "node pico8/tools/seed-spritesheet.mjs",
     "pico8:sync-sprites": "node pico8/tools/sync-sprites.mjs",
-    "pico8:build": "node pico8/tools/build-cart.mjs",
+    "pico8:build": "node pico8/tools/sync-sprites.mjs && node pico8/tools/build-cart.mjs",
     "pico8:all": "node pico8/tools/seed-spritesheet.mjs && node pico8/tools/sync-sprites.mjs && node pico8/tools/build-cart.mjs",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build --target universal-apple-darwin"

@@ -75,6 +75,20 @@ function dist2(x1,y1,x2,y2)
  return dx*dx+dy*dy
 end
 
+function seg_point_dist2(ax,ay,bx,by,px,py)
+ local abx=bx-ax
+ local aby=by-ay
+ local ab2=abx*abx+aby*aby
+ if ab2<=0 then
+  return dist2(ax,ay,px,py)
+ end
+ local t=((px-ax)*abx+(py-ay)*aby)/ab2
+ t=clamp(t,0,1)
+ local cx=ax+abx*t
+ local cy=ay+aby*t
+ return dist2(cx,cy,px,py)
+end
+
 function enemy_slot_xy(row,col)
  local sway=sin(form_t/240+row*0.03)*6
  local bob=sin((form_t+col*9)/200)*1.5
@@ -87,9 +101,16 @@ function add_score(pts)
   score_lo-=1000
   score_hi+=1
  end
+ if demo_mode then return end
  if score_hi>hi_hi or (score_hi==hi_hi and score_lo>hi_lo) then
   hi_hi=score_hi
   hi_lo=score_lo
+  if save_hi_score then
+   save_hi_score()
+  end
+ end
+ if check_extra_life_reward then
+  check_extra_life_reward()
  end
 end
 

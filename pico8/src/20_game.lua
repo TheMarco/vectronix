@@ -3,16 +3,103 @@ function _init()
  init_port()
 end
 
+ufo_sfx_chan=3
+beam_sfx_chan=3
+capture_sfx_chan=3
+player_death_sfx_chan=2
+boss_pick_chances={0.45,0.7,0.6,0.55}
+boss_tractor_chances={0.55,0.72,0.3,0.45}
+boss_beam_lens={80,64,88,72}
+
+function load_hi_score()
+ local saved=max(0,flr(dget(0)))
+ hi_hi=flr(saved/1000)
+ hi_lo=saved%1000
+end
+
+function save_hi_score()
+ dset(0,hi_hi*1000+hi_lo)
+end
+
+function play_beam_sfx()
+ if beam_sfx_active then return end
+ sfx(21,beam_sfx_chan)
+ beam_sfx_active=true
+end
+
+function stop_ufo_sfx()
+ sfx(-1,ufo_sfx_chan)
+end
+
+function stop_beam_sfx()
+ if not beam_sfx_active then return end
+ sfx(-1,beam_sfx_chan)
+ beam_sfx_active=false
+end
+
+function play_player_death_sfx()
+ sfx(7,player_death_sfx_chan)
+end
+
+function stop_capture_sfx()
+ sfx(-1,capture_sfx_chan)
+end
+
+function play_jingle(n)
+ stop_ufo_sfx()
+ stop_beam_sfx()
+ stop_capture_sfx()
+ sfx(-1,player_death_sfx_chan)
+ music(n)
+end
+
+function enter_gameover()
+ gameover_t=0
+ mode="gameover"
+ play_jingle(2)
+end
+
+function return_to_title()
+ demo_mode=false
+ title_idle_t=0
+ title_t=0
+ gameover_t=0
+ music(-1)
+ stop_ufo_sfx()
+ stop_beam_sfx()
+ stop_capture_sfx()
+ mode="title"
+end
+
 function init_port()
  hi_hi=0
  hi_lo=0
- power_cycle=1
+ cartdata("vectronix_galaga_p8")
+ load_hi_score()
  title_t=0
+ title_idle_t=0
+ beam_sfx_active=false
+ demo_mode=false
+ pending_start_jingle=false
  mode="title"
- reset_run()
+ reset_run(false)
 end
 
-function reset_run()
+function check_extra_life_reward()
+ if extra_life_awarded or score_hi<20 then return end
+ extra_life_awarded=true
+ if ships<3 then
+  ships+=1
+  sfx(10,player_death_sfx_chan)
+  show_notice("extra ship",90)
+  if mode=="gameover" then
+   mode="play"
+   gameover_t=0
+  end
+ end
+end
+
+function reset_run(run_demo)
  score_hi=0
  score_lo=0
  wave=0
@@ -33,18 +120,23 @@ function reset_run()
  magnet_t=0
  freeze_t=0
  shield_t=0
- wave_t=0
  wave_banner_t=0
  wave_clear_t=0
  result_t=0
  result_bonus=0
  notice_t=0
  notice_text=""
+ demo_mode=run_demo or false
+ demo_t=0
+ gameover_t=0
  challenge=false
  challenge_hits=0
  challenge_total=0
  form_t=0
  dive_t=90
+ stop_ufo_sfx()
+ stop_beam_sfx()
+ stop_capture_sfx()
  player={
   x=64,
   y=player_y,
@@ -61,7 +153,6 @@ function reset_run()
 end
 
 function start_wave()
- sfx(3)
  wave+=1
  bullets={}
  ebullets={}
@@ -76,6 +167,18 @@ function start_wave()
  wave_clear_t=0
  result_t=0
  result_bonus=0
+ music(-1)
+ stop_ufo_sfx()
+ stop_beam_sfx()
+ stop_capture_sfx()
+ if wave==1 then
+  if pending_start_jingle and not demo_mode then
+   play_jingle(0)
+  end
+  pending_start_jingle=false
+ else
+  sfx(8,player_death_sfx_chan)
+ end
  clear_timed_powerups()
  if wave%5==0 then
   build_challenge_wave()
@@ -98,14 +201,32 @@ end
 
 function update_title()
  if btnp(4) or btnp(5) then
+  pending_start_jingle=true
   mode="play"
-  reset_run()
+  reset_run(false)
+  return
+ end
+ if btnp(0) or btnp(1) then
+  title_idle_t=0
+ else
+  title_idle_t+=1
+ end
+ if title_idle_t>=480 then
+  pending_start_jingle=false
+  mode="play"
+  reset_run(true)
  end
 end
 
 function update_gameover()
- if btnp(4) or btnp(5) then
-  mode="title"
+ gameover_t+=1
+ local accept_input=gameover_t>60
+ if demo_mode then
+  if (accept_input and (btnp(0) or btnp(1) or btnp(4) or btnp(5))) or gameover_t>90 then
+   return_to_title()
+  end
+ elseif accept_input and (btnp(4) or btnp(5)) then
+  return_to_title()
  end
 end
 
@@ -120,6 +241,13 @@ function update_stars()
 end
 
 function update_play()
+ if demo_mode then
+  demo_t+=1
+  if btnp(0) or btnp(1) or btnp(4) or btnp(5) or demo_t>1800 then
+   return_to_title()
+   return
+  end
+ end
  player.anim+=1
  if player.fire_t>0 then player.fire_t-=1 end
  if player.inv>0 then player.inv-=1 end
@@ -130,7 +258,6 @@ function update_play()
  if magnet_t>0 then magnet_t-=1 end
  if freeze_t>0 then freeze_t-=1 end
  if shield_t>0 then shield_t-=1 end
- if shield_t<=0 then shield_t=0 end
 
  if freeze_t<=0 then
   form_t+=1
@@ -149,27 +276,24 @@ function update_play()
  update_capture_anim()
  check_collisions()
  check_wave_state()
- if not extra_life_awarded and score_hi>=20 then
-  extra_life_awarded=true
-  if ships<3 then
-   ships+=1
-   sfx(5)
-   show_notice("extra ship",90)
-  end
- end
 end
 
 function update_player()
  if player.alive then
   local old_x=player.x
   local spd=player.dual and 1.75 or 2.25
-  if btn(0) then player.x-=spd end
-  if btn(1) then player.x+=spd end
+  local fire=false
+  if demo_mode then
+   fire=update_demo_player(spd)
+  else
+   if btn(0) then player.x-=spd end
+   if btn(1) then player.x+=spd end
+   fire=rapid_t>0 and (btn(4) or btn(5)) or (btnp(4) or btnp(5))
+  end
   local margin=player.dual and 8 or 4
   player.x=clamp(player.x,field_l+margin,field_r-margin)
   player.vx=player.x-old_x
-  local fire=rapid_t>0 and (btn(4) or btn(5)) or (btnp(4) or btnp(5))
-  if fire and player.fire_t<=0 and wave_banner_t<=0 then
+  if fire and player.fire_t<=0 and (challenge or wave_banner_t<=0) then
    if fire_player() then
     player.fire_t=(rapid_t>0) and 4 or 8
    end
@@ -186,7 +310,7 @@ function update_player()
    player.x=64
    player.y=player_y
   else
-   mode="gameover"
+   enter_gameover()
   end
  end
 end
@@ -200,12 +324,12 @@ function fire_player()
  end
  if n>=cap then return false end
  if player.dual then
-  add(bullets,{x=player.x-4,y=player.y-4,vx=0,vy=-3.4,t=0})
-  add(bullets,{x=player.x+4,y=player.y-4,vx=0,vy=-3.4,t=0})
+  add(bullets,{x=player.x-4,y=player.y-4,px=player.x-4,py=player.y-4,vx=0,vy=-3.4,t=0})
+  add(bullets,{x=player.x+4,y=player.y-4,px=player.x+4,py=player.y-4,vx=0,vy=-3.4,t=0})
  else
-  add(bullets,{x=player.x,y=player.y-4,vx=0,vy=-3.4,t=0})
+  add(bullets,{x=player.x,y=player.y-4,px=player.x,py=player.y-4,vx=0,vy=-3.4,t=0})
  end
- sfx(0)
+ sfx(5,player_death_sfx_chan)
  return true
 end
 
@@ -239,12 +363,58 @@ function player_hit_test(x,y,rx,ry)
  return false
 end
 
+function bullet_enemy_hit(b,e)
+ local rx=6+enemy_defs[e.kind].w*2
+ local ry=6+enemy_defs[e.kind].h*2
+ if abs(b.x-e.x)<rx and abs(b.y-e.y)<ry then
+  return true
+ end
+ if not b.px or not e.px then
+  return false
+ end
+ local hit_r=(challenge and 7 or 6)+enemy_defs[e.kind].w
+ local mid_x=(e.x+e.px)*0.5
+ local mid_y=(e.y+e.py)*0.5
+ local best=min(
+  seg_point_dist2(b.px,b.py,b.x,b.y,e.x,e.y),
+  seg_point_dist2(b.px,b.py,b.x,b.y,e.px,e.py)
+ )
+ best=min(best,seg_point_dist2(b.px,b.py,b.x,b.y,mid_x,mid_y))
+ return best<hit_r*hit_r
+end
+
+function spinner_deflects(e)
+ return flr((e.anim+e.row*3+e.col*5)/2)%6==0
+end
+
+function phantom_intangible(e)
+ return flr((e.anim+e.row*7+e.col*5)/3)%10>=7
+end
+
+function boss_target_x(e)
+ local aim_x=player.x
+ if e.hp<2 or e.boss_behavior==3 then
+  aim_x=player.x+player.vx*10
+ elseif e.boss_behavior==1 then
+  aim_x=player.x+player.vx*6
+ end
+ return clamp(aim_x,field_l+6,field_r-6)
+end
+
 function dive_shot_count(e)
- local wave_shots=min(3,1+flr((wave-1)/3))
+ local wave_shots=min(4,1+flr((wave-1)/3))
  if e.kind=="guardian" then return 0 end
- if e.kind=="swarm" then return max(1,wave_shots-1) end
- if e.kind=="bomber" then return wave_shots+1 end
- return wave_shots
+ if e.kind=="bomber" or e.kind=="commander" or e.kind=="boss" then
+  wave_shots+=1
+ elseif e.kind=="swarm" then
+  wave_shots=max(1,wave_shots-1)
+ elseif e.kind=="attacker" and wave>=10 then
+  wave_shots+=1
+ end
+ if e.kind=="boss" and (e.boss_behavior==1 or e.boss_behavior==3 or e.hp<2) then
+  wave_shots+=1
+ end
+ return min(5,wave_shots)
 end
 
 function start_enemy_dive(e,dive_kind,target_x,delay,slot,total)
@@ -256,16 +426,68 @@ function start_enemy_dive(e,dive_kind,target_x,delay,slot,total)
  e.dive_kind=dive_kind
  e.dive_slot=slot or 0
  e.dive_total=total or 1
- e.shots=dive_shot_count(e)
- e.shot_t=12+flr(rnd(18))
+ e.shot_max=dive_shot_count(e)
+ e.shots=e.shot_max
+ e.shot_t=0.18+rnd(0.08)
+ if (slot or 0)<=0 and (not delay or delay>=0) then sfx(26,player_death_sfx_chan) end
  if dive_kind==5 or e.kind=="guardian" then
   e.shots=0
+  e.shot_max=0
  end
+end
+
+function update_demo_player(spd)
+ local margin=player.dual and 8 or 4
+ local target_x=64
+ local threat=nil
+ for b in all(ebullets) do
+  if b.y>player.y-44 and b.y<player.y+6 and abs(b.x-player.x)<18 then
+   threat=b
+   break
+  end
+ end
+
+ if threat then
+  target_x=player.x+(threat.x<=player.x and 18 or -18)
+ else
+  local aim=nil
+  local best=999
+  for e in all(enemies) do
+   if e.state~="queued" then
+    local rank=abs(e.x-player.x)+abs(e.y-60)
+    if rank<best then
+     best=rank
+     aim=e
+    end
+   end
+  end
+  if aim then
+   target_x=aim.x
+  end
+ end
+
+ target_x=clamp(target_x,field_l+margin,field_r-margin)
+ if player.x<target_x-1 then
+  player.x=min(target_x,player.x+spd)
+ elseif player.x>target_x+1 then
+  player.x=max(target_x,player.x-spd)
+ end
+
+ if wave_banner_t>0 or player.fire_t>0 or threat and abs(threat.x-player.x)<10 then return false end
+ if ufo and abs(ufo.x-player.x)<14 then return true end
+ for e in all(enemies) do
+  if e.state~="queued" and e.y<player.y and abs(e.x-player.x)<12 then
+   return true
+  end
+ end
+ return rnd(1)<0.04
 end
 
 function update_bullets()
  for b in all(bullets) do
   b.t+=1
+  b.px=b.x
+  b.py=b.y
   if magnet_t>0 then
    local target=nil
    local best=99999
@@ -278,12 +500,12 @@ function update_bullets()
      end
     end
    end
-   if target then
-    local dx=target.x-b.x
-    local dy=target.y-b.y
-    local mag=max(0.1,sqrt(dx*dx+dy*dy))
-    b.vx=clamp(b.vx+dx/mag*0.06,-2,2)
-    b.vy=clamp(b.vy+dy/mag*0.04,-3.8,-1.2)
+  if target then
+   local dx=target.x-b.x
+   local dy=min(-4,target.y-b.y)
+   local mag=max(0.1,sqrt(dx*dx+dy*dy))
+   b.vx=clamp(b.vx+dx/mag*0.2,-3,3)
+   b.vy=clamp(b.vy+dy/mag*0.16,-4.2,-0.8)
    end
   end
   b.x+=b.vx
@@ -342,6 +564,7 @@ end
 function update_capture_anim()
  if not capture_anim then return end
  if capture_anim.boss.state~="capturing" then
+  stop_capture_sfx()
   capture_anim=nil
   return
  end
@@ -351,7 +574,12 @@ function update_capture_anim()
  if capture_anim.y<=capture_anim.boss.y+6 then
   capture_anim.boss.captured=true
   capture_anim.boss.state="returning"
-  sfx(-1,3)
+  if ships<=0 then
+   player.captured=false
+   enter_gameover()
+  else
+   play_jingle(1)
+  end
   capture_anim=nil
  end
 end
@@ -369,6 +597,7 @@ function update_ufo(frozen_only)
     anim=0
    }
    ufo_t=1500
+   sfx(25,ufo_sfx_chan)
   end
   return
  end
@@ -377,36 +606,33 @@ function update_ufo(frozen_only)
   ufo.x+=ufo.dir*1.1
  end
  if ufo.x<-24 or ufo.x>152 then
+  stop_ufo_sfx()
   ufo=nil
  end
 end
 
 function try_group_dive(pool)
+ local row=flr(rnd(5))
  local best={}
- for row=0,4 do
-  local row_pool={}
+ for tries=1,5 do
+  best={}
   for e in all(pool) do
    if e.row==row and e.kind~="boss" and e.kind~="commander" and e.kind~="guardian" then
-    add(row_pool,e)
+    add(best,e)
    end
   end
-  if #row_pool>#best then
-   best=row_pool
-  end
+  if #best>=3 then break end
+  row=(row+1)%5
  end
  if #best<3 then return false end
- local group_n=wave>=14 and 4 or 3
+ local group_n=wave>=12 and 4 or 3
  group_n=min(group_n,#best)
- local start_idx=1
- if #best>group_n then
-  start_idx=1+flr(rnd(#best-group_n+1))
- end
+ local start_idx=1+flr(rnd(max(1,#best-group_n+1)))
  local center_x=player.x
  for i=0,group_n-1 do
   local e=best[start_idx+i]
   del(pool,e)
-  local offset=(i-(group_n-1)/2)*10
-  start_enemy_dive(e,6,center_x+offset,-i*0.08,i,group_n)
+  start_enemy_dive(e,6,center_x,-i*0.08,i,group_n)
  end
  return true
 end
@@ -415,7 +641,7 @@ function launch_pool_dive(pool)
  local pick=nil
  if not player.dual and not captured_boss and ships>1 then
   for e in all(pool) do
-   if e.kind=="boss" and rnd(1)<0.45 then
+   if e.kind=="boss" and rnd(1)<boss_pick_chances[1+e.boss_behavior] then
     pick=e
     break
    end
@@ -427,15 +653,16 @@ function launch_pool_dive(pool)
  if not pick then return end
  del(pool,pick)
 
- if pick.kind=="boss" and not captured_boss and ships>1 and not player.dual and not tractor_active() and rnd(1)<0.55 then
+ if pick.kind=="boss" and not captured_boss and ships>1 and not player.dual and not tractor_active() and rnd(1)<boss_tractor_chances[1+pick.boss_behavior] then
   pick.state="diving"
   pick.t=0
   pick.sx=pick.x
   pick.sy=pick.y
   pick.dive_kind=5
-  pick.beam_x=player.x
+  pick.beam_x=boss_target_x(pick)
+  pick.beam_len=boss_beam_lens[1+pick.boss_behavior]
   pick.shots=0
-  sfx(6)
+  sfx(11,capture_sfx_chan)
   return
  end
 
@@ -443,7 +670,7 @@ function launch_pool_dive(pool)
   local buddy=pool[1+flr(rnd(#pool))]
   del(pool,buddy)
   if buddy then
-   start_enemy_dive(buddy,2,player.x+6,-0.06,1,2)
+   start_enemy_dive(buddy,2,clamp(player.x+6,field_l+6,field_r-6),-0.06,1,2)
   end
  end
 
@@ -457,7 +684,7 @@ function launch_pool_dive(pool)
   end
   if escort then
    del(pool,escort)
-   start_enemy_dive(escort,4,player.x+8,-0.05,1,2)
+   start_enemy_dive(escort,4,clamp(player.x+8,field_l+6,field_r-6),-0.05,1,2)
   end
  end
 
@@ -499,13 +726,17 @@ function launch_pool_dive(pool)
    dive_kind=4
   end
  elseif pick.kind=="boss" then
-  if rnd(1)<0.5 then
-   dive_kind=1
+  if pick.boss_behavior==3 then
+   dive_kind=7
   else
-   dive_kind=4
+   dive_kind=rnd(1)<0.5 and 1 or 3
   end
  end
- start_enemy_dive(pick,dive_kind,player.x)
+ local target_x=clamp(player.x+rnd(24)-12,field_l+6,field_r-6)
+ if pick.kind=="guardian" or pick.kind=="boss" then
+  target_x=boss_target_x(pick)
+ end
+ start_enemy_dive(pick,dive_kind,target_x)
 end
 
 function update_enemies()
@@ -520,6 +751,8 @@ function update_enemies()
  end
 
  for e in all(enemies) do
+  e.px=e.x
+  e.py=e.y
   e.anim+=1
   if e.state=="queued" then
    e.spawn_t-=1
@@ -547,7 +780,7 @@ function update_enemies()
    e.beam_t-=1
    if e.beam_t<=0 then
     e.state="returning"
-    sfx(-1,3)
+    stop_beam_sfx()
    else
     if player.alive and ships>1 and not captured_boss and abs(player.x-e.x)<10 then
      if player.dual then
@@ -555,7 +788,8 @@ function update_enemies()
       player.inv=70
       explode_at(player.x+5,player.y)
       e.state="returning"
-      sfx(-1,3)
+      play_player_death_sfx()
+      stop_beam_sfx()
      else
       capture_player(e)
      end
@@ -583,14 +817,19 @@ end
 
 function update_diving_enemy(e,mult)
  local cycle=flr((wave-1)/9)
- e.t+=0.012*enemy_defs[e.kind].speed*mult*(1+wave*0.03+cycle*0.15)
+ local speed=enemy_defs[e.kind].speed
+ if e.kind=="boss" then
+  if e.hp<2 then speed*=1.15 end
+  if e.boss_behavior==1 then speed*=1.1 end
+ end
+ e.t+=0.012*speed*mult*(1+wave*0.03+cycle*0.15)
  if e.kind=="boss" and e.dive_kind==5 then
   e.x=lerp(e.sx,e.beam_x,e.t)
   e.y=e.sy+e.t*70
   if e.t>=0.85 then
    e.state="beaming"
-   e.beam_t=80
-   sfx(7,3)
+   e.beam_t=e.beam_len or 80
+   play_beam_sfx()
   end
   return
  end
@@ -621,6 +860,10 @@ function update_diving_enemy(e,mult)
   local offset=(e.dive_slot-(e.dive_total-1)/2)*8
   dx=tx*min(t,0.72)/0.72+offset+sin((t+e.dive_slot*0.14)*0.8)*6*e.dir
   dy=t*108
+ elseif e.dive_kind==7 then
+  local tx=e.target_x-e.sx
+  dx=tx*min(t,0.96)+sin(t*0.45)*3*e.dir
+  dy=t*118-sin(min(t,0.65)*1.2)*8
  else
   local tx=e.target_x-e.sx
   dx=tx*min(t,0.92)+sin(t*0.35)*4*e.dir
@@ -629,13 +872,21 @@ function update_diving_enemy(e,mult)
  e.x=e.sx+dx
  e.y=e.sy+dy
 
+ if e.kind=="spinner" then
+  e.x+=sin(t*2.4+e.col*0.3)*4*e.dir
+ elseif e.kind=="phantom" then
+  e.x+=sin(t*3.2+e.col*0.4)*5*e.dir
+ elseif e.kind=="boss" and e.boss_behavior==3 then
+  e.x=lerp(e.x,boss_target_x(e),0.04)
+ end
+
  if e.shots>0 then
-  e.shot_t-=1
-  if e.shot_t<=0 and e.y>18 and e.y<104 and t>0.18 then
+  if e.y>18 and e.y<104 and t>=e.shot_t then
    enemy_fire(e)
    e.shots-=1
    if e.shots>0 then
-    e.shot_t=max(10,22-cycle*2)+flr(rnd(max(10,18-cycle)))
+    local fired=e.shot_max-e.shots
+    e.shot_t=min(0.88,0.2+(fired/max(1,e.shot_max))*0.58+rnd(0.05))
    end
   end
  end
@@ -652,40 +903,27 @@ function update_challenge_enemy(e,mult)
   e.y=-20
   return
  end
- local t=e.t/150
- local pat=e.dive_kind
- local off=e.row*0.06
+ local t=e.t
+ local u=min(t/124,1)
+  local pat=e.dive_kind
+ local spread=(e.dive_slot-1.5)*14
+  local start_x=e.dir==1 and -12 or 140
+  local end_x=e.dir==1 and 140 or -12
+ local base_y=26+e.dive_slot*18
+  local pi=3.1415
+ e.x=lerp(start_x,end_x,u)
  if pat==1 then
-  -- swoop from left, arc down across screen, exit right
-  local px=e.dir==1 and -10 or 138
-  local ex=e.dir==1 and 138 or -10
-  e.x=lerp(px,ex,t)
-  e.y=20+sin(t*0.5+off)*45
+  e.y=base_y
  elseif pat==2 then
-  -- dive from top center, fan out, loop back up and exit top
-  local spread=(e.row-1.5)*14
-  e.x=64+spread+sin(t*0.8)*12*e.dir
-  e.y=-10+sin(min(t,0.5)*1.0)*130
+  e.y=base_y+sin(u*pi)*8
  elseif pat==3 then
-  -- enter from side, loop around center, exit same side
-  local px=e.dir==1 and -10 or 138
-  local ang=t*1.2+off
-  e.x=px+e.dir*(t*40)+sin(ang)*25*e.dir
-  e.y=55+cos(ang)*35
+  e.y=base_y+sin(u*pi*2+e.dive_slot*0.6)*6
  elseif pat==4 then
-  -- enter from top corners, cross in center, exit opposite bottom
-  local sx=e.dir==1 and (20+e.row*8) or (108-e.row*8)
-  local ex=e.dir==1 and (108-e.row*8) or (20+e.row*8)
-  e.x=lerp(sx,ex,t)
-  e.y=-10+t*140+sin(t*0.6+off)*15
+  e.y=base_y+cos(u*pi*2)*5
  else
-  -- spiral into the center, then dive out
-  local ang=t*2.2+off*6
-  local rad=max(6,34-t*22)
-  e.x=64+cos(ang)*rad*e.dir
-  e.y=16+t*108+sin(ang*0.7)*18
+  e.y=base_y+sin(u*pi*1.5)*10
  end
- if t>1.1 then
+ if t>132 then
   del(enemies,e)
  end
 end
@@ -699,27 +937,16 @@ function trigger_dive()
  end
  if #holding<1 then return end
 
- local group_chance=0
- if wave>=14 then
-  group_chance=0.26
- elseif wave>=8 then
-  group_chance=0.14
- end
+ local group_chance=wave>=18 and 0.45 or wave>=12 and 0.35 or wave>=9 and 0.2 or wave>=8 and 0.1 or 0
  if not player.dual and group_chance>0 and rnd(1)<group_chance then
   if try_group_dive(holding) then
    return
   end
  end
 
- local dive_count=1
- if wave>=12 then
-  dive_count=1+flr(rnd(3))
- elseif wave>=5 then
-  dive_count=1+flr(rnd(2))
- end
- if wave>=16 and rnd(1)<0.35 then
-  dive_count=min(3,max(2,dive_count))
- end
+ local max_divers=wave>=18 and 4 or wave>=9 and 3 or wave>=4 and 2 or 1
+ local dive_count=min(#holding,max_divers)
+ if rnd(1)<0.7 and dive_count>1 then dive_count-=1 end
 
  for i=1,dive_count do
   if #holding<1 then break end
@@ -736,6 +963,13 @@ function tractor_active()
  return capture_anim~=nil
 end
 
+function fire_aim(x,y,tx,spd)
+ local dx=tx-x
+ local dy=max(8,player.y-y)
+ local mag=max(1,sqrt(dx*dx+dy*dy))
+ add(ebullets,{x=x,y=y+4,vx=dx/mag*spd,vy=dy/mag*spd})
+end
+
 function enemy_fire(e)
  if challenge then return end
  local shot=enemy_defs[e.kind].shot
@@ -744,19 +978,12 @@ function enemy_fire(e)
  if shot=="straight" then
   add(ebullets,{x=e.x,y=e.y+4,vx=0,vy=1.7*spd})
  elseif shot=="aim" then
-  local dx=player.x-e.x
-  local dy=max(8,player.y-e.y)
-  local mag=max(1,sqrt(dx*dx+dy*dy))
-  add(ebullets,{x=e.x,y=e.y+4,vx=dx/mag*1.5*spd,vy=dy/mag*1.5*spd})
+  fire_aim(e.x,e.y,player.x,1.5*spd)
  elseif shot=="boss" then
-  local aim_x=player.x
-  if e.hp<enemy_defs[e.kind].hp or wave>=8 then
-   aim_x=clamp(player.x+player.vx*8,field_l+4,field_r-4)
-  end
-  local dx=aim_x-e.x
-  local dy=max(8,player.y-e.y)
-  local mag=max(1,sqrt(dx*dx+dy*dy))
-  add(ebullets,{x=e.x,y=e.y+4,vx=dx/mag*1.55*spd,vy=dy/mag*1.55*spd})
+  local aim_x=(e.hp<2 or e.boss_behavior==3 or wave>=8) and boss_target_x(e) or player.x
+  local boss_spd=1.55
+  if e.boss_behavior==1 then boss_spd=1.7 end
+  fire_aim(e.x,e.y,aim_x,boss_spd*spd)
  elseif shot=="spread" then
   add(ebullets,{x=e.x,y=e.y+4,vx=0,vy=1.7*spd})
   add(ebullets,{x=e.x,y=e.y+4,vx=-0.7*spd,vy=1.5*spd})
@@ -773,7 +1000,9 @@ function capture_player(e)
  player.respawn_t=90
  ships=max(0,ships-1)
  e.state="capturing"
- sfx(-1,3)
+ stop_beam_sfx()
+ stop_capture_sfx()
+ sfx(22,capture_sfx_chan)
  capture_anim={
   x=player.x,
   y=player.y,
@@ -795,11 +1024,13 @@ function kill_enemy(e,diving_kill)
   add_score(diving_kill and def.dive_score or def.score)
  end
  explode_at(e.x,e.y)
- sfx(1)
- if e.state=="beaming" or e.state=="capturing" then sfx(-1,3) end
+ sfx(6,player_death_sfx_chan)
+ if e.state=="beaming" or e.state=="capturing" then stop_beam_sfx() end
+ if e.state=="capturing" then stop_capture_sfx() end
  if capture_anim and capture_anim.boss==e then
   capture_anim=nil
   player.captured=false
+  stop_capture_sfx()
  end
  if e.kind=="boss" then
   if e.captured then
@@ -826,11 +1057,11 @@ function spawn_powerup(x,y)
 end
 
 function apply_powerup(kind)
- sfx(4)
+ sfx(9,player_death_sfx_chan)
  if kind=="extra" then
   if ships<3 then
    ships+=1
-   sfx(5)
+   sfx(10,player_death_sfx_chan)
   end
   show_notice("extra ship",90)
  elseif kind=="rapid" then
@@ -863,15 +1094,16 @@ function hit_player()
   player.dual=false
   player.inv=70
   explode_at(player.x+5,player.y)
+  play_player_death_sfx()
   return
  end
  player.alive=false
  player.respawn_t=90
  ships-=1
  explode_at(player.x,player.y)
- sfx(2)
+ play_player_death_sfx()
  if ships<=0 then
-  mode="gameover"
+  enter_gameover()
  end
 end
 
@@ -890,9 +1122,9 @@ function check_collisions()
       end
      end
      break
-    elseif e.kind=="phantom" and enemy_frame(e)>=3 then
-    elseif abs(b.x-e.x)<6+enemy_defs[e.kind].w*2 and abs(b.y-e.y)<6+enemy_defs[e.kind].h*2 then
-     if e.kind=="spinner" and enemy_frame(e)==2 then
+    elseif not challenge and e.kind=="phantom" and phantom_intangible(e) then
+    elseif bullet_enemy_hit(b,e) then
+     if not challenge and e.kind=="spinner" and spinner_deflects(e) then
       explode_at(b.x,b.y)
       del(bullets,b)
       break
@@ -912,14 +1144,23 @@ function check_collisions()
 
  if ufo then
   for b in all(bullets) do
-   if abs(b.x-ufo.x)<10 and abs(b.y-ufo.y)<6 then
+  if abs(b.x-ufo.x)<10 and abs(b.y-ufo.y)<6 then
     add_score(300)
     explode_at(ufo.x,ufo.y)
     spawn_powerup(ufo.x,ufo.y)
+    stop_ufo_sfx()
     del(bullets,b)
     ufo=nil
     break
    end
+  end
+ end
+
+ for p in all(powerups) do
+  if player_hit_test(p.x,p.y,8,8) then
+   apply_powerup(p.kind)
+   del(powerups,p)
+   break
   end
  end
 
@@ -949,15 +1190,8 @@ function check_collisions()
    player.dual=true
    show_notice("dual fighter",90)
   end
+  sfx(24,capture_sfx_chan)
   rescue_ship=nil
- end
-
- for p in all(powerups) do
-  if player_hit_test(p.x,p.y,8,8) then
-   apply_powerup(p.kind)
-   del(powerups,p)
-   break
-  end
  end
 end
 
@@ -970,7 +1204,7 @@ function check_wave_state()
    result_bonus+=10000
    if ships<3 then
     ships+=1
-    sfx(5)
+    sfx(10,player_death_sfx_chan)
     show_notice("perfect! ship+",120)
    else
     show_notice("perfect!",90)
@@ -1000,17 +1234,18 @@ end
 function enemy_frame(e)
  local def=enemy_defs[e.kind]
  if e.kind=="spinner" then
+  if spinner_deflects(e) then return 2 end
   return (flr(e.anim/4)%4)+1
  elseif e.kind=="guardian" then
   if e.hp<=1 then return 4 end
   if e.hp==2 then return 3 end
   return (flr(e.anim/10)%2)+1
  elseif e.kind=="phantom" then
-  if flr(e.anim/6)%4>=2 then return 3+flr(e.anim/12)%2 end
+  if phantom_intangible(e) then return 3+flr(e.anim/12)%2 end
   return 1+flr(e.anim/10)%2
  elseif e.kind=="boss" then
   if e.state=="beaming" then return 4 end
-  if e.hp<=1 then return 3 end
+  if e.hp<2 then return 3 end
   return 1+flr(e.anim/10)%2
  elseif e.kind=="commander" or e.kind=="bomber" then
   if e.hp<enemy_defs[e.kind].hp then return 3 end
