@@ -81,60 +81,44 @@ export class SoundEngine {
   }
 
   // ─── ENEMY EXPLOSION ───
-  // Matches PICO-8 sfx(6): descending noise burst, 5 notes, speed 4
-  // pitches 24→20→16→12→8, waveform=noise, vol 7→6→5→3→2 with fade-out
+  // Short punchy burst: low-pass filtered noise + descending square pop
   playExplosion() {
     if (!this._ensureCtx()) return;
     const t = this.ctx.currentTime;
+    const dur = 0.18;
 
-    // PICO-8 pitch-to-freq: 65.41 * 2^(pitch/12)
-    const noteLen = 4 / 120; // speed=4 → ~0.033s per note
-    const notes = [
-      { pitch: 24, vol: 7 },
-      { pitch: 20, vol: 6 },
-      { pitch: 16, vol: 5 },
-      { pitch: 12, vol: 3 },
-      { pitch: 8,  vol: 2 },
-    ];
-
-    // Pre-render the descending noise burst as a single buffer
-    const totalDur = notes.length * noteLen;
-    const sr = this.ctx.sampleRate;
-    const bufLen = Math.ceil(totalDur * sr);
-    const buf = this.ctx.createBuffer(1, bufLen, sr);
+    // Noise burst through steep low-pass — keeps it crunchy, not hissy
+    const bufLen = this.ctx.sampleRate * dur;
+    const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
     const data = buf.getChannelData(0);
-
-    for (let ni = 0; ni < notes.length; ni++) {
-      const n = notes[ni];
-      const freq = 65.41 * Math.pow(2, n.pitch / 12);
-      const baseVol = n.vol / 7;
-      const startSamp = Math.floor(ni * noteLen * sr);
-      const endSamp = Math.floor((ni + 1) * noteLen * sr);
-      const noteSamps = endSamp - startSamp;
-
-      // PICO-8 noise: sample-and-hold at the note's frequency
-      let holdSamples = Math.max(1, Math.floor(sr / freq));
-      let holdVal = Math.random() * 2 - 1;
-      let holdCount = 0;
-
-      for (let s = 0; s < noteSamps; s++) {
-        const idx = startSamp + s;
-        if (idx >= bufLen) break;
-        const fade = 1 - (s / noteSamps); // fade-out effect (effect=5)
-        if (holdCount >= holdSamples) {
-          holdVal = Math.random() * 2 - 1;
-          holdCount = 0;
-        }
-        data[idx] = holdVal * baseVol * fade * 0.35;
-        holdCount++;
-      }
+    for (let i = 0; i < bufLen; i++) {
+      data[i] = Math.random() * 2 - 1;
     }
-
     const noise = this.ctx.createBufferSource();
     noise.buffer = buf;
-    noise.connect(this.masterGain);
+    const lpf = this.ctx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.setValueAtTime(1200, t);
+    lpf.frequency.exponentialRampToValueAtTime(150, t + dur);
+    lpf.Q.value = 1.5;
+    const noiseGain = this.ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.35, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    noise.connect(lpf).connect(noiseGain).connect(this.masterGain);
     noise.start(t);
-    noise.stop(t + totalDur);
+    noise.stop(t + dur);
+
+    // Descending square wave — the punch/thump
+    const osc = this.ctx.createOscillator();
+    const oscGain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(280, t);
+    osc.frequency.exponentialRampToValueAtTime(30, t + 0.12);
+    oscGain.gain.setValueAtTime(0.22, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    osc.connect(oscGain).connect(this.masterGain);
+    osc.start(t);
+    osc.stop(t + 0.12);
   }
 
   // ─── PLAYER DEATH ───
