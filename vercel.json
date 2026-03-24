@@ -1,2 +1,5 @@
 {
+  "redirects": [
+    { "source": "/pico8/standalone", "destination": "/pico8/standalone/" }
+  ]
 }
