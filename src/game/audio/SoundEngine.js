@@ -81,14 +81,13 @@ export class SoundEngine {
   }
 
   // ─── ENEMY EXPLOSION ───
-  // Short punchy burst: low-pass filtered noise + descending square pop
+  // 8-bit style: short white noise burst + fast descending square wave
   playExplosion() {
     if (!this._ensureCtx()) return;
     const t = this.ctx.currentTime;
-    const dur = 0.18;
 
-    // Noise burst through steep low-pass — keeps it crunchy, not hissy
-    const bufLen = this.ctx.sampleRate * dur;
+    // Raw white noise burst — no filtering, just hard cutoff
+    const bufLen = this.ctx.sampleRate * 0.12;
     const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < bufLen; i++) {
@@ -96,29 +95,24 @@ export class SoundEngine {
     }
     const noise = this.ctx.createBufferSource();
     noise.buffer = buf;
-    const lpf = this.ctx.createBiquadFilter();
-    lpf.type = 'lowpass';
-    lpf.frequency.setValueAtTime(1200, t);
-    lpf.frequency.exponentialRampToValueAtTime(150, t + dur);
-    lpf.Q.value = 1.5;
     const noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.35, t);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    noise.connect(lpf).connect(noiseGain).connect(this.masterGain);
+    noiseGain.gain.setValueAtTime(0.22, t);
+    noiseGain.gain.linearRampToValueAtTime(0.0, t + 0.12);
+    noise.connect(noiseGain).connect(this.masterGain);
     noise.start(t);
-    noise.stop(t + dur);
+    noise.stop(t + 0.12);
 
-    // Descending square wave — the punch/thump
+    // Fast descending square wave — the classic 8-bit "pop"
     const osc = this.ctx.createOscillator();
     const oscGain = this.ctx.createGain();
     osc.type = 'square';
-    osc.frequency.setValueAtTime(280, t);
-    osc.frequency.exponentialRampToValueAtTime(30, t + 0.12);
-    oscGain.gain.setValueAtTime(0.22, t);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    osc.frequency.setValueAtTime(600, t);
+    osc.frequency.exponentialRampToValueAtTime(60, t + 0.1);
+    oscGain.gain.setValueAtTime(0.18, t);
+    oscGain.gain.linearRampToValueAtTime(0.0, t + 0.1);
     osc.connect(oscGain).connect(this.masterGain);
     osc.start(t);
-    osc.stop(t + 0.12);
+    osc.stop(t + 0.1);
   }
 
   // ─── PLAYER DEATH ───

@@ -121,6 +121,8 @@ var P8Sound = (() => {
     const out = new Float32Array(totalSamples);
 
     let phase = 0;
+    let noiseVal = 0;      // current sample-and-hold noise value
+    let lastNoisePhase = 0; // track phase wraps for noise
 
     for (let ni = 0; ni < totalNotes; ni++) {
       const n = def.notes[ni];
@@ -156,10 +158,19 @@ var P8Sound = (() => {
         }
 
         // Advance phase
+        const prevPhase = phase;
         phase += f / sampleRate;
         phase -= Math.floor(phase);
 
-        out[sampleIdx] += generateWave(n.waveform, phase) * vol * 0.15;
+        // Noise: sample-and-hold — new random value each phase cycle
+        if (n.waveform === 6) {
+          if (phase < prevPhase) { // phase wrapped
+            noiseVal = Math.random() * 2 - 1;
+          }
+          out[sampleIdx] += noiseVal * vol * 0.15;
+        } else {
+          out[sampleIdx] += generateWave(n.waveform, phase) * vol * 0.15;
+        }
       }
     }
 
