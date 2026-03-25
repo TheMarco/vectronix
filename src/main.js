@@ -5,7 +5,7 @@ import { GameScene } from './game/scenes/GameScene.js';
 import { ShipViewerScene } from './game/scenes/ShipViewerScene.js';
 import { SoundEngine } from './game/audio/SoundEngine.js';
 import { createShaderOverlay } from './game/shaderOverlay.js';
-import { init as initPlayFun } from './game/playfun.js';
+
 import { initHandheld, isNativePlatform } from './handheld/index.js';
 import { setLiteMode } from './game/rendering/GlowRenderer.js';
 
@@ -86,9 +86,6 @@ document.fonts.ready.then(() => {
     document.addEventListener('click', initAudio);
     document.addEventListener('keydown', initAudio);
   }
-
-  // Play.fun SDK (only activates when iframed on play.fun)
-  initPlayFun();
 
   // Apply shader overlay after canvas is ready
   setTimeout(async () => {

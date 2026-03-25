@@ -1,6 +1,14 @@
 // Pocket Swarm — transpiled from PICO-8 Lua to standalone JavaScript
 // Uses P8 (pico8.js) for drawing/math and P8Sound (sound.js) for audio
 
+// --- Play.fun SDK integration ---
+let _pfSdk = null;
+(function() {
+  if (typeof OpenGameSDK === 'undefined') return;
+  _pfSdk = new OpenGameSDK({ ui: { usePointsWidget: true } });
+  _pfSdk.init({ gameId: 'e9784e13-3c81-40cf-8464-3806fdf3703a' }).catch(function() { _pfSdk = null; });
+})();
+
 // ============================================================
 // 00_consts.lua
 // ============================================================
@@ -105,6 +113,7 @@ function enemy_slot_xy(row, col) {
 function add_score(pts) {
   score_lo += pts;
   while (score_lo >= 1000) { score_lo -= 1000; score_hi += 1; }
+  if (_pfSdk && !demo_mode) _pfSdk.addPoints(pts);
   if (demo_mode) return;
   if (score_hi > hi_hi || (score_hi === hi_hi && score_lo > hi_lo)) {
     hi_hi = score_hi;
@@ -288,6 +297,7 @@ function enter_gameover() {
   gameover_t = 0;
   mode = "gameover";
   play_jingle(2);
+  if (_pfSdk && !demo_mode) _pfSdk.endGame().catch(function() {});
 }
 
 function return_to_title() {

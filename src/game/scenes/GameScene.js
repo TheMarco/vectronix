@@ -20,7 +20,7 @@ import {
 } from '../rendering/GlowRenderer.js';
 import { vectorText } from '../rendering/VectorFont.js';
 import { DemoAI } from '../ai/DemoAI.js';
-import { addPoints as playFunAddPoints, endGame as playFunEndGame } from '../playfun.js';
+
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -54,7 +54,6 @@ export class GameScene extends Phaser.Scene {
     this._addScore = (pts) => {
       const rounded = Math.round(pts);
       this.score += rounded;
-      playFunAddPoints(rounded);
     };
     this._prevScore = 0;
     this._nextExtraLifeIndex = 0;
@@ -687,7 +686,6 @@ export class GameScene extends Phaser.Scene {
       // in the same frame as death isn't wasted
       if (!this.gameOver && this.player.isGameOver) {
         this.gameOver = true;
-        playFunEndGame();
         try {
           const prev = parseInt(localStorage.getItem('vectronix-highscore') || '0', 10);
           if (this.score > prev) {
