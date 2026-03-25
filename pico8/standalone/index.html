@@ -20,17 +20,6 @@
       image-rendering: crisp-edges;
       border: 2px solid #333;
     }
-    #start-overlay {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7);
-      display: flex; justify-content: center; align-items: center;
-      cursor: pointer; z-index: 10;
-    }
-    #start-overlay span {
-      color: #fff; font-size: 18px; text-transform: uppercase;
-      letter-spacing: 2px; animation: blink 1s infinite;
-    }
-    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
     #touch-zone {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       z-index: 5; touch-action: none; display: none;
@@ -42,7 +31,6 @@
 </head>
 <body>
   <div id="game-container">
-    <div id="start-overlay"><span>Click to Start</span></div>
   </div>
 
   <div id="touch-zone"></div>
@@ -183,7 +171,6 @@ a009000a0000000000888000006666000cc00cc0c00cc00c008888000088880000eeee0000888800
 
     // --- Bootstrap ---
     const container = document.getElementById('game-container');
-    const overlay = document.getElementById('start-overlay');
 
     // Calculate best integer scale
     function calcScale() {
@@ -243,27 +230,20 @@ a009000a0000000000888000006666000cc00cc0c00cc00c008888000088880000eeee0000888800
     window.mobileTouch = () => ({ active: touchActive, x: touchX });
     window.consumeMobileTap = () => { const t = mobileTapped; mobileTapped = false; return t; };
 
-    // Start on click/tap (needed for audio context)
-    let started = false;
-    overlay.addEventListener('click', () => {
-      if (started) return;
-      started = true;
-      overlay.style.display = 'none';
+    // Ensure audio context on first user gesture (browsers require interaction)
+    function ensureAudio() {
       P8Sound.ensureAudioCtx();
-      _init();
-      requestAnimationFrame(gameLoop);
-    });
+      window.removeEventListener('keydown', ensureAudio);
+      window.removeEventListener('click', ensureAudio);
+      window.removeEventListener('touchstart', ensureAudio);
+    }
+    window.addEventListener('keydown', ensureAudio);
+    window.addEventListener('click', ensureAudio);
+    window.addEventListener('touchstart', ensureAudio);
 
-    // Also start on any key
-    window.addEventListener('keydown', (e) => {
-      if (!started) {
-        started = true;
-        overlay.style.display = 'none';
-        P8Sound.ensureAudioCtx();
-        _init();
-        requestAnimationFrame(gameLoop);
-      }
-    }, { once: false });
+    // Auto-start game immediately
+    _init();
+    requestAnimationFrame(gameLoop);
 
     // Game loop at 30fps (PICO-8 default)
     const FRAME_TIME = 1000 / 30;
